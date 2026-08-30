@@ -4,7 +4,7 @@ Dokumen ini menjelaskan tahapan pengembangan SIGAP SARPRAS dari fondasi reposito
 
 ## PHASE 1 — Repository Foundation
 
-Status: **Sedang berjalan**
+Status: **Selesai**
 
 - Menyusun struktur repository (`docs/`, `apps-script/`, `frontend/`).
 - Menyusun dokumentasi arsitektur (`ARCHITECTURE.md`), workflow (`WORKFLOW.md`), dan skema database (`DATABASE_SCHEMA.md`).
@@ -13,11 +13,13 @@ Status: **Sedang berjalan**
 
 ## PHASE 2 — Core Backend
 
-- Implementasi `Config.gs` — konfigurasi ID spreadsheet, nama sheet, dan konstanta sistem.
-- Implementasi `DatabaseService.gs` — operasi baca/tulis/cari terhadap Google Spreadsheet.
-- Implementasi `SequenceService.gs` — pembangkitan ID unik dan nomor laporan.
-- Implementasi `UtilityService.gs` — fungsi bantu lintas domain.
-- Penyusunan struktur sheet awal (`90_settings`, `91_sequences`) pada Google Spreadsheet.
+Status: **Selesai**
+
+- Implementasi `Config.gs` — konfigurasi ID spreadsheet (via Script Properties, key `SPREADSHEET_ID`), pemetaan nama sheet, timezone (`Asia/Makassar`), dan konstanta sistem.
+- Implementasi `DatabaseService.gs` — operasi baca/tulis/cari generik terhadap Google Spreadsheet (`getAllRows`, `getRowById`, `findRows`, `insertRow`, `updateRowById`), dilindungi `LockService` pada operasi tulis.
+- Implementasi `SequenceService.gs` — pembangkitan ID unik dan nomor laporan (`getNextSequence`, `padNumber`, `generateEntityId`, `generateReportNumber`), atomik menggunakan `LockService.getScriptLock()`.
+- Implementasi `UtilityService.gs` — fungsi bantu lintas domain (format timestamp, validasi umum, struktur response standar).
+- **Belum termasuk**: pembuatan sheet aktual pada Google Spreadsheet (`90_settings`, `91_sequences`, dsb.) — ini merupakan langkah operasional yang dilakukan di sisi Google Sheets, bukan bagian dari source code.
 
 ## PHASE 3 — Master Data
 

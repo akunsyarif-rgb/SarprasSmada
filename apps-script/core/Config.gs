@@ -1,20 +1,114 @@
 /**
- * Config.gs — PLACEHOLDER
+ * Config.gs
  *
- * Modul ini akan menjadi satu-satunya sumber konfigurasi sistem SIGAP SARPRAS:
- * ID Google Spreadsheet, nama-nama sheet, konstanta status laporan, dan
- * parameter global lainnya. Tidak ada nilai konfigurasi yang boleh
- * di-hardcode di modul domain lain (users, master-data, reports, audit).
+ * Lapisan konfigurasi tunggal (single source of truth) untuk SIGAP SARPRAS.
+ * Modul lain (DatabaseService, SequenceService, UtilityService, dan domain
+ * services pada tahap berikutnya) WAJIB membaca konfigurasi dari sini.
+ * Spreadsheet ID, nama sheet, dan parameter global lainnya TIDAK BOLEH
+ * di-hardcode di modul lain.
  *
- * Belum ada implementasi pada tahap PHASE 1 (Repository Foundation).
- * Implementasi dijadwalkan pada PHASE 2 — Core Backend.
- * Lihat docs/ARCHITECTURE.md (bagian CORE) dan docs/DEVELOPMENT_ROADMAP.md.
+ * Spreadsheet ID diambil dari Script Properties (Project Settings > Script
+ * Properties) dengan key SPREADSHEET_ID — bukan dari nilai tetap di kode,
+ * agar spreadsheet database dapat diganti per environment (development/
+ * staging/production) tanpa mengubah source code.
  *
- * Cakupan yang direncanakan:
- * - ID Google Spreadsheet yang digunakan sebagai database.
- * - Pemetaan nama sheet sesuai docs/DATABASE_SCHEMA.md
- *   (01_users, 02_locations, ..., 91_sequences).
- * - Konstanta status workflow laporan sesuai docs/WORKFLOW.md
- *   (SUBMITTED, VERIFIED, ASSIGNED, IN_PROGRESS, COMPLETED, CLOSED).
- * - Konstanta peran (role) pengguna.
+ * Arsitektur:
+ *   CONFIG → DATABASE ACCESS → SEQUENCE SERVICE → DOMAIN SERVICES
+ *
+ * Referensi: docs/ARCHITECTURE.md (bagian CORE), docs/DATABASE_SCHEMA.md
  */
+
+/**
+ * Konfigurasi global sistem.
+ * @const
+ */
+var CONFIG = {
+  /** Key Script Properties yang digunakan sistem. */
+  SCRIPT_PROPERTY_KEYS: {
+    SPREADSHEET_ID: 'SPREADSHEET_ID'
+  },
+
+  /** Timezone resmi yang digunakan seluruh sistem untuk pencatatan waktu. */
+  TIMEZONE: 'Asia/Makassar',
+
+  /** Pemetaan nama sheet database sesuai docs/DATABASE_SCHEMA.md. */
+  SHEETS: {
+    USERS: '01_users',
+    LOCATIONS: '02_locations',
+    CATEGORIES: '03_categories',
+    FACILITIES: '04_facilities',
+    OWNERS: '05_owners',
+    REPORTS: '10_reports',
+    REPORT_PHOTOS: '11_report_photos',
+    REPORT_HISTORY: '12_report_history',
+    REPORT_COMMENTS: '13_report_comments',
+    AUDIT_LOGS: '20_audit_logs',
+    SETTINGS: '90_settings',
+    SEQUENCES: '91_sequences'
+  },
+
+  /**
+   * Nama sequence yang dikelola SequenceService melalui sheet 91_sequences.
+   * Digunakan sebagai kunci dasar (base key) — SequenceService dapat
+   * menurunkan kunci turunan darinya (mis. sequence bertahun untuk nomor
+   * laporan publik).
+   */
+  SEQUENCES: {
+    REPORT: 'REPORT',
+    HISTORY: 'HISTORY',
+    AUDIT: 'AUDIT'
+  },
+
+  /** Prefix ID entitas, digunakan bersama SequenceService.generateEntityId(). */
+  ID_PREFIXES: {
+    REPORT: 'RPT',
+    HISTORY: 'HIS',
+    AUDIT: 'AUD'
+  }
+};
+
+/**
+ * Mengambil Spreadsheet ID database sistem dari Script Properties.
+ * Spreadsheet ID tidak boleh di-hardcode di kode — nilainya wajib diset
+ * melalui Project Settings > Script Properties dengan key SPREADSHEET_ID.
+ *
+ * @return {string} Spreadsheet ID.
+ * @throws {Error} Jika Script Property SPREADSHEET_ID belum diset.
+ */
+function getSpreadsheetId() {
+  var spreadsheetId = PropertiesService.getScriptProperties()
+    .getProperty(CONFIG.SCRIPT_PROPERTY_KEYS.SPREADSHEET_ID);
+
+  if (!spreadsheetId) {
+    throw new Error(
+      'Config.getSpreadsheetId: Script Property "' +
+      CONFIG.SCRIPT_PROPERTY_KEYS.SPREADSHEET_ID +
+      '" belum diset. Set nilainya melalui Project Settings > Script Properties ' +
+      'sebelum menjalankan sistem.'
+    );
+  }
+
+  return spreadsheetId;
+}
+
+/**
+ * Membuka Spreadsheet database sistem berdasarkan Spreadsheet ID yang
+ * dikonfigurasi pada Script Properties.
+ *
+ * @return {Spreadsheet} Objek Spreadsheet aktif sebagai database.
+ * @throws {Error} Jika Spreadsheet ID belum diset atau spreadsheet tidak
+ *   dapat dibuka (ID salah, dihapus, atau tidak ada akses).
+ */
+function getSpreadsheet() {
+  var spreadsheetId = getSpreadsheetId();
+
+  try {
+    return SpreadsheetApp.openById(spreadsheetId);
+  } catch (e) {
+    throw new Error(
+      'Config.getSpreadsheet: Gagal membuka spreadsheet dengan ID "' +
+      spreadsheetId + '". Pastikan ID benar dan script memiliki akses. Detail: ' +
+      e.message
+    );
+  }
+}

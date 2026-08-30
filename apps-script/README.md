@@ -4,7 +4,13 @@ Direktori ini berisi source code backend SIGAP SARPRAS yang berjalan di atas Goo
 
 ## Status
 
-Direktori ini saat ini berisi **kerangka struktur (scaffold) berdasarkan domain**, bukan implementasi logika bisnis. Setiap file `.gs` pada tahap ini merupakan **placeholder berisi dokumentasi tanggung jawab modul**, belum berisi kode produksi. Implementasi akan dilakukan bertahap mengikuti `docs/DEVELOPMENT_ROADMAP.md`.
+**PHASE 2 — Core Backend selesai diimplementasikan.** Modul `core/` (`Config.gs`, `DatabaseService.gs`, `SequenceService.gs`, `UtilityService.gs`) sudah berisi implementasi fungsional dan siap digunakan oleh domain services.
+
+Domain `users/`, `master-data/`, `reports/`, `audit/`, dan `tests/` **masih berupa placeholder** (belum ada implementasi logika bisnis) dan akan dikerjakan bertahap mengikuti `docs/DEVELOPMENT_ROADMAP.md`.
+
+### Persiapan Sebelum Menjalankan
+
+Sebelum core backend dapat berfungsi, Spreadsheet ID database wajib diset sebagai Script Property dengan key `SPREADSHEET_ID` (Project Settings > Script Properties pada editor Apps Script). Spreadsheet tersebut wajib memiliki sheet-sheet sesuai `docs/DATABASE_SCHEMA.md`, termasuk `91_sequences` dengan kolom `sequence_key`, `last_value`, dan `updated_at`.
 
 ## Struktur Domain
 
@@ -17,7 +23,7 @@ Direktori ini saat ini berisi **kerangka struktur (scaffold) berdasarkan domain*
 | `audit/` | Audit | Pencatatan aktivitas penting sistem untuk keperluan audit. |
 | `tests/` | Pengujian | Skenario pengujian untuk seluruh service backend. |
 
-## Prinsip Penulisan Kode (berlaku mulai PHASE 2)
+## Prinsip Penulisan Kode
 
 - Setiap domain hanya boleh berkomunikasi dengan Google Spreadsheet melalui `core/DatabaseService.gs` — tidak ada pemanggilan `SpreadsheetApp` secara langsung di luar `core/`.
 - Seluruh konfigurasi (ID spreadsheet, nama sheet, konstanta status, dsb.) hanya didefinisikan di `core/Config.gs`.
