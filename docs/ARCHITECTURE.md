@@ -19,8 +19,8 @@ Google Spreadsheet (Database)
 Penjelasan tiap lapisan:
 
 - **User** — warga sekolah (siswa, guru, staf, penanggung jawab sarana-prasarana) yang berinteraksi dengan sistem.
-- **Frontend Application** — antarmuka yang digunakan pengguna untuk mengirim laporan dan memantau status. Belum dikembangkan pada tahap ini (lihat `frontend/README.md`).
-- **Google Apps Script** — lapisan entry point (mis. Web App `doGet`/`doPost` atau fungsi yang dipanggil frontend) yang menerima permintaan dan meneruskannya ke Service Layer.
+- **Frontend Application** — antarmuka final yang digunakan pengguna untuk mengirim laporan dan memantau status, dijadwalkan **PHASE 7** (lihat `frontend/README.md`). Sebagai MVP sementara (**PHASE 4.5**), `apps-script/api/Index.html` menyajikan halaman uji coba minimal agar sistem sudah dapat dibuka dan diuji pengguna nyata lebih awal — lihat `apps-script/api/README.md`.
+- **Google Apps Script** — lapisan entry point: `apps-script/api/App.gs` (`doGet`) menyajikan `Index.html`, yang lalu memanggil fungsi publik pada `apps-script/api/ReportApi.gs`/`MasterDataApi.gs` lewat `google.script.run` — inilah "fungsi yang dipanggil frontend" yang meneruskan permintaan ke Service Layer. `apps-script/api/AuthContext.gs` mengidentifikasi pemanggil dari sesi Google aktif sebelum permintaan diteruskan.
 - **Service Layer** — kumpulan modul (`.gs`) yang berisi logika bisnis, dikelompokkan berdasarkan domain. Service Layer tidak boleh mengakses spreadsheet secara langsung, melainkan melalui `DatabaseService`.
 - **Google Spreadsheet** — media penyimpanan data terstruktur dalam bentuk sheet, masing-masing merepresentasikan satu entitas/tabel (lihat `docs/DATABASE_SCHEMA.md`).
 
