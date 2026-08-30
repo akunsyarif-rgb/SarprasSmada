@@ -124,10 +124,13 @@ function coreSmokeTestSheetAccess_() {
   var lastColumn = Math.max(sheet.getLastColumn(), 1);
   var headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
 
-  if (headers.indexOf('sequence_key') === -1) {
+  // Kolom kunci sequence bisa "sequence_name" (canonical, PHASE 3.75) atau
+  // "sequence_key" (alias lama) — lihat SequenceService.gs SEQUENCE_SHEET_COLUMNS_.
+  var hasKeyColumn = headers.indexOf('sequence_name') !== -1 || headers.indexOf('sequence_key') !== -1;
+  if (!hasKeyColumn) {
     throw new Error(
-      'Sheet "' + CONFIG.SHEETS.SEQUENCES + '" ditemukan tetapi header "sequence_key" tidak ada. ' +
-      'Periksa docs/DATABASE_SETUP.md.'
+      'Sheet "' + CONFIG.SHEETS.SEQUENCES + '" ditemukan tetapi tidak ada kolom kunci sequence ' +
+      '("sequence_name" atau "sequence_key"). Periksa docs/DATABASE_SETUP.md.'
     );
   }
 

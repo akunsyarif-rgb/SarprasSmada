@@ -19,8 +19,8 @@ Google Spreadsheet (Database)
 Penjelasan tiap lapisan:
 
 - **User** — warga sekolah (siswa, guru, staf, penanggung jawab sarana-prasarana) yang berinteraksi dengan sistem.
-- **Frontend Application** — antarmuka yang digunakan pengguna untuk mengirim laporan dan memantau status. Belum dikembangkan pada tahap ini (lihat `frontend/README.md`).
-- **Google Apps Script** — lapisan entry point (mis. Web App `doGet`/`doPost` atau fungsi yang dipanggil frontend) yang menerima permintaan dan meneruskannya ke Service Layer.
+- **Frontend Application** — antarmuka final yang digunakan pengguna untuk mengirim laporan dan memantau status, dijadwalkan **PHASE 7** (lihat `frontend/README.md`). Sebagai MVP sementara (**PHASE 4.5**), `apps-script/api/Index.html` menyajikan halaman uji coba minimal agar sistem sudah dapat dibuka dan diuji pengguna nyata lebih awal — lihat `apps-script/api/README.md`.
+- **Google Apps Script** — lapisan entry point: `apps-script/api/App.gs` (`doGet`) menyajikan `Index.html`, yang lalu memanggil fungsi publik pada `apps-script/api/ReportApi.gs`/`MasterDataApi.gs` lewat `google.script.run` — inilah "fungsi yang dipanggil frontend" yang meneruskan permintaan ke Service Layer. `apps-script/api/AuthContext.gs` mengidentifikasi pemanggil dari sesi Google aktif sebelum permintaan diteruskan.
 - **Service Layer** — kumpulan modul (`.gs`) yang berisi logika bisnis, dikelompokkan berdasarkan domain. Service Layer tidak boleh mengakses spreadsheet secara langsung, melainkan melalui `DatabaseService`.
 - **Google Spreadsheet** — media penyimpanan data terstruktur dalam bentuk sheet, masing-masing merepresentasikan satu entitas/tabel (lihat `docs/DATABASE_SCHEMA.md`).
 
@@ -49,13 +49,12 @@ Data referensi yang digunakan oleh domain pelaporan.
 
 ### REPORT MANAGEMENT (`apps-script/reports/`)
 
-Domain inti sistem, mencakup:
+Domain inti sistem. Diimplementasikan pada **PHASE 4 — Legacy-Compatible Report Engine**, terbagi tiga file sesuai tanggung jawabnya:
 
-- **Create Report** — pembuatan laporan baru beserta penetapan ID dan nomor laporan unik.
-- **Report Validation** — validasi kelengkapan dan konsistensi data laporan sebelum disimpan atau diubah.
-- **Workflow** — pengendalian transisi status laporan sesuai aturan yang telah ditetapkan (lihat `docs/WORKFLOW.md`). Transisi status ilegal wajib ditolak pada lapisan ini.
-- **Authorization** — pemeriksaan hak akses, memastikan hanya pengguna dengan peran/kewenangan yang sesuai yang dapat melakukan suatu aksi (mis. hanya verifikator yang dapat mengubah status ke `VERIFIED`).
-- **History** — pencatatan riwayat perubahan pada setiap laporan (`12_report_history`), terpisah dari audit log sistem secara umum.
+- **Create Report, Report Validation, Report Retrieval/Listing/Update** (`ReportService.gs`) — pembuatan laporan baru beserta penetapan `report_id`/`report_number` melalui `SequenceService`; validasi kelengkapan dan konsistensi data laporan, dengan tiga tingkat berbeda untuk CREATE (strict), READ (tanpa validasi — legacy-compatible), dan UPDATE (contextual, hanya kolom yang diubah) — lihat `apps-script/reports/README.md` dan header file untuk detail.
+- **Workflow** (`ReportWorkflowService.gs`) — pengendalian transisi status laporan sesuai aturan yang telah ditetapkan (lihat `docs/WORKFLOW.md`). Transisi status ilegal wajib ditolak pada lapisan ini.
+- **History** (`ReportHistoryService.gs`) — pencatatan riwayat perubahan pada setiap laporan (`12_report_history`), terpisah dari audit log sistem secara umum. Dipanggil internal oleh `ReportService.gs`/`ReportWorkflowService.gs`.
+- **Authorization** — pemeriksaan hak akses, memastikan hanya pengguna dengan peran/kewenangan yang sesuai yang dapat melakukan suatu aksi (mis. hanya verifikator yang dapat mengubah status ke `VERIFIED`). **BELUM diimplementasikan** — dijadwalkan **PHASE 5**; `changeReportStatus()` PHASE 4 hanya memvalidasi legalitas urutan transisi, bukan hak akses pemanggil.
 
 ### AUDIT (`apps-script/audit/`)
 

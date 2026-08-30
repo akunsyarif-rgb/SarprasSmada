@@ -97,6 +97,24 @@ var CONFIG = {
     VERIFIKATOR: 'VERIFIKATOR',
     OWNER: 'OWNER',
     ADMIN: 'ADMIN'
+  },
+
+  /**
+   * Nilai status laporan yang sah pada sistem, sesuai docs/WORKFLOW.md.
+   * Ini adalah daftar KANONIK — apps-script/reports/ReportWorkflowService.gs
+   * WAJIB menolak nilai status di luar daftar ini. Urutan transisi yang
+   * diperbolehkan (linear, tidak boleh melompat) didefinisikan sebagai
+   * REPORT_WORKFLOW_TRANSITIONS_ pada ReportWorkflowService.gs, bukan di
+   * sini, karena bersifat aturan bisnis domain reports, bukan konfigurasi
+   * generik lintas domain.
+   */
+  REPORT_STATUS: {
+    SUBMITTED: 'SUBMITTED',
+    VERIFIED: 'VERIFIED',
+    ASSIGNED: 'ASSIGNED',
+    IN_PROGRESS: 'IN_PROGRESS',
+    COMPLETED: 'COMPLETED',
+    CLOSED: 'CLOSED'
   }
 };
 

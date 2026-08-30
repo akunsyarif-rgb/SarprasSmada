@@ -99,6 +99,30 @@ function getUserById(userId) {
 }
 
 /**
+ * Mengambil satu pengguna berdasarkan email (tanpa mempermasalahkan huruf
+ * besar/kecil atau spasi — sama seperti pemeriksaan duplikasi email pada
+ * createUser()/updateUser()). Dipakai oleh apps-script/api/ untuk
+ * mengidentifikasi pengguna dari sesi Google aktif (lihat
+ * apps-script/api/AuthContext.gs) — BUKAN autentikasi, hanya pencocokan
+ * data pengguna yang sudah terdaftar.
+ *
+ * @param {string} email Alamat email yang dicari.
+ * @return {Object|null} Baris pengguna (aktif maupun tidak aktif), atau
+ *   null jika tidak ada pengguna dengan email tersebut.
+ * @throws {Error} Jika email kosong.
+ */
+function getUserByEmail(email) {
+  if (isEmpty(email)) {
+    throw new Error('UserService.getUserByEmail: "email" wajib diisi.');
+  }
+  var normalizedEmail = normalizeText(email);
+  var matches = findRows(CONFIG.SHEETS.USERS, function (row) {
+    return normalizeText(row.email) === normalizedEmail;
+  });
+  return matches.length > 0 ? matches[0] : null;
+}
+
+/**
  * Mengambil seluruh pengguna yang berstatus aktif.
  *
  * @return {Array<Object>} Daftar pengguna aktif.

@@ -44,19 +44,41 @@ Status: **Selesai**
 - Soft delete (`is_active`) untuk seluruh entitas Master Data — tidak ada hard delete.
 - Penyusunan `apps-script/tests/MasterDataSmokeTest.gs` — smoke test manual untuk seluruh domain Master Data.
 
-## PHASE 4 — Report Engine
+## PHASE 3.75 — Legacy-Compatible Repository Reconciliation
 
-- Implementasi pembuatan laporan baru (`Create Report`) beserta penetapan `report_number` melalui `SequenceService`.
-- Implementasi validasi data laporan (`Report Validation`).
-- Implementasi pencatatan lampiran laporan (`11_report_photos`) dan komentar (`13_report_comments`).
-- Implementasi perhitungan `system_priority` berdasarkan kategori, `impact_level`, dan `safety_risk`.
+Status: **Selesai**
+
+- Menyelaraskan schema `11_report_photos`, `12_report_history`, `13_report_comments`, `20_audit_logs`, dan `91_sequences` mengikuti struktur database produksi nyata (temuan PHASE 3.5), tanpa migrasi spreadsheet.
+- Menambahkan sequence compatibility layer pada `SequenceService.gs` (alias resolution `sequence_name`/`sequence_key`, `current_value`/`last_value`).
+
+## PHASE 4 — Legacy-Compatible Report Engine
+
+Status: **Selesai** (cakupan diperluas dari rencana awal atas permintaan eksplisit — lihat catatan di bawah)
+
+- Implementasi `apps-script/reports/ReportService.gs` — Create Report (penetapan `report_id`/`report_number` melalui `SequenceService`), Report Retrieval, Report Listing (`listActiveReports`, `listReportsByStatus`), Report Update, dan Referential Validation berlapis (CREATE strict, READ tanpa validasi/legacy-compatible, UPDATE contextual — lihat `apps-script/reports/README.md`).
+- Implementasi `apps-script/reports/ReportWorkflowService.gs` — validasi transisi status laporan sesuai `docs/WORKFLOW.md`, termasuk penolakan transisi ilegal (`changeReportStatus`).
+- Implementasi `apps-script/reports/ReportHistoryService.gs` — pencatatan riwayat perubahan laporan (`12_report_history`), dipanggil otomatis oleh `ReportService`/`ReportWorkflowService` (action `CREATE`/`UPDATE`/`STATUS_CHANGE`/`DEACTIVATE`).
+- Penyusunan `apps-script/tests/ReportEngineSmokeTest.gs` — smoke test manual untuk seluruh fungsi di atas, termasuk skenario legacy orphan compatibility.
+- **Cakupan yang SENGAJA DITUNDA** (lihat laporan PHASE 4 untuk detail): perhitungan `system_priority` otomatis (belum ada algoritma kanonik yang ditemukan — OPEN DESIGN DECISION), pencatatan lampiran laporan (`11_report_photos`) dan komentar (`13_report_comments`) — schema sudah siap sejak PHASE 3.75, service belum diimplementasikan, otorisasi berbasis peran, dan integrasi audit log (`20_audit_logs`) — seluruhnya tetap dijadwalkan PHASE 5 sesuai rencana awal, KECUALI validasi transisi status dan pencatatan riwayat (`12_report_history`) yang aslinya direncanakan PHASE 5 namun diminta dan diselesaikan lebih awal pada PHASE 4 ini.
+
+## PHASE 4.5 — MVP Usability
+
+Status: **Selesai**
+
+Ditambahkan **di luar urutan roadmap awal**, atas prioritas eksplisit: sebelum menambah fitur baru, sistem harus lebih dulu benar-benar dapat **dijalankan dan diuji oleh pengguna nyata** (bukan hanya lewat editor Apps Script oleh developer). Sebelum fase ini, tidak ada `appsscript.json`, tidak ada `doGet`/`doPost`, dan folder `frontend/` masih kosong — sehingga tidak ada cara bagi pengguna nyata untuk mencoba sistem sama sekali, walau seluruh backend (PHASE 1-4) sudah fungsional.
+
+- Menambahkan `apps-script/appsscript.json` — manifest Web App (`webapp.executeAs: "USER_ACCESSING"` agar sesi pemanggil dapat diidentifikasi individual, bukan sebagai pemilik script).
+- Implementasi `apps-script/api/App.gs` (`doGet`) yang menyajikan `apps-script/api/Index.html` — halaman uji coba MINIMAL (vanilla HTML/CSS/JS, tanpa framework/CDN eksternal): identitas pengguna aktif, form buat laporan, daftar laporan (dengan filter status), dan kontrol ubah status untuk peran yang berwenang. Ditegaskan **BUKAN** frontend final PHASE 7.
+- Implementasi `apps-script/api/AuthContext.gs` — mengidentifikasi pengguna dari sesi Google aktif (`Session.getActiveUser()`) dan mencocokkannya ke `01_users` (`UserService.getUserByEmail()`, ditambahkan pada fase ini). Juga menerapkan otorisasi **MINIMAL** (bukan RBAC penuh): hanya peran `VERIFIKATOR`/`OWNER`/`ADMIN` yang dapat memicu perubahan status atau menonaktifkan laporan — diambil langsung dari contoh yang sudah ada di `docs/ARCHITECTURE.md`, bukan aturan baru yang dikarang.
+- Implementasi `apps-script/api/ReportApi.gs`, `apps-script/api/MasterDataApi.gs`, `apps-script/api/ApiUtil.gs` — fungsi publik `google.script.run` yang HANYA meneruskan permintaan ke Service Layer yang sudah ada (`reports/`, `master-data/`) dan membungkus hasil/error dengan `core/UtilityService.gs` — tidak ada logika bisnis baru di lapisan ini, dan tidak ada pemanggilan `SpreadsheetApp`/`DatabaseService` langsung.
+- **Tidak termasuk** (di luar scope, dijadwalkan fase berikutnya): RBAC penuh per jenis transisi status, Photo/Comment Engine, audit log, dan frontend final PHASE 7 (framework, desain).
 
 ## PHASE 5 — Workflow & Authorization
 
-- Implementasi validasi transisi status laporan sesuai `docs/WORKFLOW.md`, termasuk penolakan transisi ilegal.
-- Implementasi pencatatan riwayat perubahan laporan (`12_report_history`).
-- Implementasi otorisasi berbasis peran (role) untuk setiap aksi pada laporan (mis. siapa yang berhak memverifikasi, menugaskan, atau menutup laporan).
-- Implementasi pencatatan audit log (`20_audit_logs`) untuk seluruh aktivitas penting di sistem.
+- Memperhalus otorisasi berbasis peran (role) untuk setiap aksi pada laporan (mis. siapa yang berhak memverifikasi vs. menugaskan vs. menutup laporan, bukan satu gerbang kasar untuk semua transisi). PHASE 4.5 sudah menambahkan otorisasi MINIMAL di `apps-script/api/AuthContext.gs` (hanya VERIFIKATOR/OWNER/ADMIN yang boleh memicu transisi status APA PUN) — `ReportWorkflowService.changeReportStatus()` sendiri (domain layer) tetap hanya memvalidasi legalitas URUTAN transisi, bukan hak akses; otorisasi memang sengaja ditempatkan di lapisan API/entry point, bukan domain, agar Service Layer tetap dapat dipanggil test/tools tanpa konteks pengguna.
+- Implementasi pencatatan audit log (`20_audit_logs`) untuk seluruh aktivitas penting di sistem — `AuditService` belum ada; titik integrasi yang diperlukan sudah diidentifikasi pada laporan PHASE 4 (createReport, updateReport, changeReportStatus, deactivateReport).
+- Implementasi service lampiran laporan (`11_report_photos`) dan komentar (`13_report_comments`) — di luar scope PHASE 4 secara eksplisit.
+- Implementasi perhitungan `system_priority` berdasarkan kategori, `impact_level`, dan `safety_risk`, setelah algoritma kanonik dikonfirmasi (lihat OPEN DESIGN DECISIONS pada laporan PHASE 4).
 
 ## PHASE 6 — Testing
 

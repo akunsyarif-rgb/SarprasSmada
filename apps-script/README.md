@@ -4,12 +4,14 @@ Direktori ini berisi source code backend SIGAP SARPRAS yang berjalan di atas Goo
 
 ## Status
 
-**PHASE 3 — Master Data selesai diimplementasikan** (di atas PHASE 2 — Core Backend yang juga sudah selesai dan telah melalui validation gate PHASE 2.5).
+**PHASE 4.5 — MVP Usability selesai** (di atas PHASE 4 — Legacy-Compatible Report Engine, PHASE 3.75, PHASE 3, PHASE 3.5, dan PHASE 2/2.5 yang juga sudah selesai). Sistem kini benar-benar dapat **dibuka dan diuji pengguna nyata** lewat URL Web App (`apps-script/api/`), bukan hanya berfungsi lewat editor Apps Script — lihat `apps-script/api/README.md`.
 
 - `core/` — `Config.gs`, `DatabaseService.gs`, `SequenceService.gs`, `UtilityService.gs`: fungsional, telah divalidasi (lihat `apps-script/tests/CoreSmokeTest.gs`).
 - `users/` — `UserService.gs`: fungsional.
 - `master-data/` — `LocationService.gs`, `CategoryService.gs`, `FacilityService.gs`, `OwnerService.gs`: fungsional (lihat `apps-script/tests/MasterDataSmokeTest.gs`).
-- `reports/`, `audit/` — **masih placeholder** (belum ada implementasi logika bisnis), dijadwalkan pada PHASE 4 dan PHASE 5.
+- `reports/` — `ReportService.gs`, `ReportWorkflowService.gs`, `ReportHistoryService.gs`: fungsional (lihat `apps-script/tests/ReportEngineSmokeTest.gs`). Photo/Comment Engine dan RBAC penuh **belum diimplementasikan** (di luar scope PHASE 4, dijadwalkan PHASE 5).
+- `api/` — **BARU (PHASE 4.5)**: `App.gs` (Web App entry point/`doGet`), `Index.html` (halaman uji coba minimal — BUKAN frontend final), `AuthContext.gs` (identifikasi pengguna dari sesi Google + otorisasi MINIMAL berbasis peran), `ReportApi.gs`/`MasterDataApi.gs` (fungsi publik dipanggil `Index.html` lewat `google.script.run`). Lihat `apps-script/api/README.md`.
+- `audit/` — **masih placeholder** (belum ada implementasi), dijadwalkan pada PHASE 5.
 - `tools/` — **one-time infrastructure utility** (bukan domain service): `InspectDatabase.gs` (READ-ONLY, discovery database yang sudah ada) dan `SetupDatabase.gs` (membuat sheet/header/sequence awal). Lihat `docs/DATABASE_SETUP.md`.
 
 ### Persiapan Sebelum Menjalankan
@@ -25,12 +27,13 @@ Direktori ini berisi source code backend SIGAP SARPRAS yang berjalan di atas Goo
 | `master-data/` | Data Master | Pengelolaan lokasi, kategori, fasilitas, dan owner/penanggung jawab. |
 | `reports/` | Pelaporan | Pembuatan laporan, validasi, workflow status, otorisasi, dan riwayat laporan. |
 | `audit/` | Audit | Pencatatan aktivitas penting sistem untuk keperluan audit. |
+| `api/` | Entry Point (MVP) | Web App `doGet` + halaman uji coba minimal + fungsi publik `google.script.run`. BUKAN domain bisnis — hanya meneruskan permintaan ke Service Layer, lihat `apps-script/api/README.md`. |
 | `tests/` | Pengujian | Skenario pengujian untuk seluruh service backend. |
 | `tools/` | Infrastruktur | Utility setup one-time, bukan domain — lihat `docs/ARCHITECTURE.md` bagian 4 poin 5. |
 
 ## Prinsip Penulisan Kode
 
-- Setiap domain (`users/`, `master-data/`, `reports/`, `audit/`) **dilarang** memanggil `SpreadsheetApp` secara langsung. Seluruh akses data wajib melalui fungsi generik `core/DatabaseService.gs` (`getAllRows`, `getRowById`, `findRows`, `insertRow`, `updateRowById`).
+- Setiap domain (`users/`, `master-data/`, `reports/`, `audit/`) **dilarang** memanggil `SpreadsheetApp` secara langsung. Seluruh akses data wajib melalui fungsi generik `core/DatabaseService.gs` (`getAllRows`, `getRowById`, `findRows`, `insertRow`, `updateRowById`). `apps-script/api/` bukan domain bisnis, tetapi aturan yang sama tetap berlaku secara praktik — seluruh fungsi di sana hanya memanggil Service Layer domain yang sudah ada, tidak pernah `SpreadsheetApp`/`DatabaseService` langsung (lihat `apps-script/api/README.md`).
 - **Pengecualian pertama**: `core/SequenceService.gs` boleh mengakses sheet `91_sequences` secara langsung, semata-mata agar operasi READ → INCREMENT → WRITE pada counter sequence tetap atomik dalam satu `LockService.getScriptLock()`.
 - **Pengecualian kedua**: `apps-script/tools/SetupDatabase.gs` — utility infrastruktur one-time, bukan domain — boleh mengakses `SpreadsheetApp` langsung untuk operasi STRUKTUR (membuat sheet, menulis header) yang tidak disediakan `DatabaseService`, tetapi tetap wajib memakai `DatabaseService`/`Config.gs` untuk operasi DATA. `apps-script/tools/InspectDatabase.gs` juga di folder yang sama, tapi READ-ONLY sepenuhnya — tidak butuh pengecualian penulisan sama sekali.
 - Lihat `docs/ARCHITECTURE.md` bagian 4 (Aturan Akses Database) untuk penjelasan lengkap kedua pengecualian ini.

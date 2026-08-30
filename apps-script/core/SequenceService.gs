@@ -16,6 +16,24 @@
  * proses baca dan tulis akan terpisah menjadi dua lock berbeda dan celah
  * race condition tetap terbuka di antara keduanya.
  *
+ * SEQUENCE COMPATIBILITY LAYER (PHASE 3.75 — Legacy-Compatible Reconciliation):
+ * Canonical nama kolom sheet 91_sequences adalah `sequence_name`/
+ * `current_value` — mengikuti struktur database produksi SIGAP SARPRAS
+ * yang sudah berjalan nyata (dikonfirmasi via inspeksi read-only langsung
+ * terhadap spreadsheet produksi), BUKAN nama `sequence_key`/`last_value`
+ * yang sebelumnya hanya ada di dokumentasi repository dan tidak pernah
+ * benar-benar dipakai di deployment mana pun.
+ *
+ * Untuk backward compatibility (mis. bila suatu saat ada sheet yang dibuat
+ * memakai nama kolom lama sesuai dokumentasi versi sebelumnya), modul ini
+ * mendeteksi kolom kunci/nilai berdasarkan DAFTAR ALIAS
+ * (SEQUENCE_SHEET_COLUMNS_.KEY_ALIASES / VALUE_ALIASES), bukan satu nama
+ * tetap. Nama kolom yang benar-benar cocok pada sheet nyata itulah yang
+ * dipakai untuk membaca DAN menulis (termasuk saat membuat baris sequence
+ * baru) — sehingga modul ini otomatis mengikuti nama kolom yang sudah ada
+ * di sheet, tanpa perlu tahu di awal varian mana yang dipakai, dan TANPA
+ * PERNAH mengubah/mengganti nama kolom pada spreadsheet itu sendiri.
+ *
  * Arsitektur:
  *   CONFIG → DATABASE ACCESS → SEQUENCE SERVICE → DOMAIN SERVICES
  *
@@ -23,18 +41,38 @@
  * - core/Config.gs (CONFIG.SHEETS.SEQUENCES, CONFIG.SEQUENCES, CONFIG.TIMEZONE)
  * - core/DatabaseService.gs (getSheetByName, getHeaderRow_)
  *
- * Referensi: docs/DATABASE_SCHEMA.md (91_sequences)
+ * Referensi: docs/DATABASE_SCHEMA.md (91_sequences), docs/DATABASE_SETUP.md
  */
 
 /**
- * Nama kolom yang wajib tersedia pada sheet 91_sequences.
+ * Alias nama kolom kunci/nilai yang dikenali pada sheet 91_sequences,
+ * diurutkan dari yang paling disukai (canonical) ke alias lama — lihat
+ * catatan "SEQUENCE COMPATIBILITY LAYER" pada header file ini.
  * @private
  */
 var SEQUENCE_SHEET_COLUMNS_ = {
-  KEY: 'sequence_key',
-  VALUE: 'last_value',
+  KEY_ALIASES: ['sequence_name', 'sequence_key'],
+  VALUE_ALIASES: ['current_value', 'last_value'],
   UPDATED_AT: 'updated_at'
 };
+
+/**
+ * Mencari index kolom pertama pada header yang cocok dengan salah satu
+ * alias yang diberikan (exact match, urutan alias menentukan prioritas).
+ * @param {Array<string>} headers Header row sheet.
+ * @param {Array<string>} aliases Daftar nama kolom yang dianggap setara.
+ * @return {number} Index kolom (0-based), atau -1 jika tidak ditemukan.
+ * @private
+ */
+function sequenceFindColumnIndex_(headers, aliases) {
+  for (var i = 0; i < aliases.length; i++) {
+    var idx = headers.indexOf(aliases[i]);
+    if (idx !== -1) {
+      return idx;
+    }
+  }
+  return -1;
+}
 
 /**
  * Mengambil nilai berikutnya dari suatu sequence secara atomik, lalu
@@ -46,7 +84,8 @@ var SEQUENCE_SHEET_COLUMNS_ = {
  *   CONFIG.SEQUENCES.REPORT.
  * @return {number} Nilai sequence berikutnya (bulat, mulai dari 1).
  * @throws {Error} Jika sequenceName tidak valid, struktur sheet
- *   91_sequences tidak sesuai (kolom wajib tidak ditemukan), atau lock
+ *   91_sequences tidak sesuai (tidak ada satu pun alias kolom kunci/nilai
+ *   yang dikenali ditemukan — lihat SEQUENCE_SHEET_COLUMNS_), atau lock
  *   gagal diperoleh dalam batas waktu yang ditentukan.
  */
 function getNextSequence(sequenceName) {
@@ -66,17 +105,24 @@ function getNextSequence(sequenceName) {
   try {
     var sheet = getSheetByName(CONFIG.SHEETS.SEQUENCES);
     var headers = getHeaderRow_(sheet);
-    var keyColIndex = headers.indexOf(SEQUENCE_SHEET_COLUMNS_.KEY);
-    var valueColIndex = headers.indexOf(SEQUENCE_SHEET_COLUMNS_.VALUE);
+    var keyColIndex = sequenceFindColumnIndex_(headers, SEQUENCE_SHEET_COLUMNS_.KEY_ALIASES);
+    var valueColIndex = sequenceFindColumnIndex_(headers, SEQUENCE_SHEET_COLUMNS_.VALUE_ALIASES);
     var updatedAtColIndex = headers.indexOf(SEQUENCE_SHEET_COLUMNS_.UPDATED_AT);
 
     if (keyColIndex === -1 || valueColIndex === -1) {
       throw new Error(
         'SequenceService.getNextSequence: Sheet "' + CONFIG.SHEETS.SEQUENCES +
-        '" wajib memiliki kolom "' + SEQUENCE_SHEET_COLUMNS_.KEY + '" dan "' +
-        SEQUENCE_SHEET_COLUMNS_.VALUE + '" sesuai docs/DATABASE_SCHEMA.md.'
+        '" wajib memiliki kolom kunci sequence (salah satu dari: ' +
+        SEQUENCE_SHEET_COLUMNS_.KEY_ALIASES.join(', ') + ') dan kolom nilai sequence (salah satu dari: ' +
+        SEQUENCE_SHEET_COLUMNS_.VALUE_ALIASES.join(', ') + ') sesuai docs/DATABASE_SCHEMA.md.'
       );
     }
+
+    // Nama kolom yang BENAR-BENAR ada di sheet ini — dipakai apa adanya saat
+    // menulis baris baru, sehingga SequenceService mengikuti alias yang
+    // sudah dipakai sheet (legacy atau canonical), bukan memaksakan satu nama.
+    var keyColumnName = headers[keyColIndex];
+    var valueColumnName = headers[valueColIndex];
 
     var lastRow = sheet.getLastRow();
     var targetRowIndex = -1;
@@ -98,8 +144,8 @@ function getNextSequence(sequenceName) {
 
     if (targetRowIndex === -1) {
       var newRow = headers.map(function (header) {
-        if (header === SEQUENCE_SHEET_COLUMNS_.KEY) return sequenceName;
-        if (header === SEQUENCE_SHEET_COLUMNS_.VALUE) return nextValue;
+        if (header === keyColumnName) return sequenceName;
+        if (header === valueColumnName) return nextValue;
         if (header === SEQUENCE_SHEET_COLUMNS_.UPDATED_AT) return now;
         return '';
       });
