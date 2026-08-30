@@ -4,7 +4,7 @@ Direktori ini berisi source code backend SIGAP SARPRAS yang berjalan di atas Goo
 
 ## Status
 
-**PHASE 3 — Master Data selesai diimplementasikan** (di atas PHASE 2 — Core Backend yang juga sudah selesai dan telah melalui validation gate PHASE 2.5).
+**PHASE 3.75 — Legacy-Compatible Repository Reconciliation selesai** (di atas PHASE 3 — Master Data, PHASE 3.5 — Real Environment Validation, dan PHASE 2/2.5 yang juga sudah selesai). Schema `11_report_photos`, `12_report_history`, `13_report_comments`, `20_audit_logs`, `91_sequences` kini mengikuti struktur database produksi nyata (lihat `docs/DATABASE_SCHEMA.md` bagian "Reconciliation Notes") — tidak ada migrasi spreadsheet, hanya repository yang diselaraskan.
 
 - `core/` — `Config.gs`, `DatabaseService.gs`, `SequenceService.gs`, `UtilityService.gs`: fungsional, telah divalidasi (lihat `apps-script/tests/CoreSmokeTest.gs`).
 - `users/` — `UserService.gs`: fungsional.

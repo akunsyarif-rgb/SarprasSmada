@@ -75,7 +75,7 @@
  * - Tidak pernah menimpa header yang sudah ada dan berbeda dari schema
  *   (hanya menulis header pada sheet yang benar-benar baru dibuat atau
  *   masih sepenuhnya kosong).
- * - Tidak pernah mengubah last_value pada sequence yang sudah ada.
+ * - Tidak pernah mengubah current_value pada sequence yang sudah ada.
  * - Tidak ada migrasi skema otomatis maupun penghapusan baris.
  *
  * Dependency: core/Config.gs, core/DatabaseService.gs, core/UtilityService.gs
@@ -91,6 +91,15 @@
  *
  * Nama sheet diambil dari CONFIG.SHEETS (core/Config.gs) — TIDAK
  * di-hardcode ulang di sini — hanya daftar kolomnya yang baru.
+ *
+ * PHASE 3.75 — Legacy-Compatible Reconciliation: header untuk
+ * `11_report_photos`, `12_report_history`, `13_report_comments`,
+ * `20_audit_logs`, dan `91_sequences` mengikuti struktur database
+ * produksi SIGAP SARPRAS yang sudah berjalan nyata (dikonfirmasi via
+ * inspeksi read-only), BUKAN rancangan awal repository yang tidak pernah
+ * dipakai di deployment mana pun. Lihat docs/DATABASE_SCHEMA.md bagian
+ * "Reconciliation Notes" pada masing-masing sheet untuk rincian
+ * legacy-only vs. repo-only columns.
  * @private
  */
 var SETUP_DATABASE_SCHEMA_ = [
@@ -100,18 +109,18 @@ var SETUP_DATABASE_SCHEMA_ = [
   { sheetName: CONFIG.SHEETS.FACILITIES, headers: ['facility_id', 'category_id', 'facility_name', 'is_active', 'created_at', 'updated_at'] },
   { sheetName: CONFIG.SHEETS.OWNERS, headers: ['owner_id', 'owner_name', 'description', 'is_active', 'created_at', 'updated_at'] },
   { sheetName: CONFIG.SHEETS.REPORTS, headers: ['report_id', 'report_number', 'reporter_id', 'location_id', 'category_id', 'facility_id', 'condition', 'description', 'impact_level', 'safety_risk', 'system_priority', 'priority', 'priority_override_reason', 'status', 'owner_id', 'duplicate_of_report_id', 'created_at', 'updated_at', 'verified_at', 'assigned_at', 'started_at', 'completed_at', 'closed_at', 'is_active'] },
-  { sheetName: CONFIG.SHEETS.REPORT_PHOTOS, headers: ['photo_id', 'report_id', 'file_url', 'uploaded_by', 'caption', 'created_at'] },
-  { sheetName: CONFIG.SHEETS.REPORT_HISTORY, headers: ['history_id', 'report_id', 'previous_status', 'new_status', 'changed_by', 'notes', 'created_at'] },
-  { sheetName: CONFIG.SHEETS.REPORT_COMMENTS, headers: ['comment_id', 'report_id', 'author_id', 'comment_text', 'is_internal', 'created_at'] },
-  { sheetName: CONFIG.SHEETS.AUDIT_LOGS, headers: ['log_id', 'actor_id', 'action', 'entity_type', 'entity_id', 'details', 'created_at'] },
+  { sheetName: CONFIG.SHEETS.REPORT_PHOTOS, headers: ['photo_id', 'report_id', 'photo_type', 'drive_file_id', 'drive_url', 'file_name', 'mime_type', 'file_size', 'uploaded_by', 'uploaded_at', 'is_active'] },
+  { sheetName: CONFIG.SHEETS.REPORT_HISTORY, headers: ['history_id', 'report_id', 'previous_status', 'new_status', 'action', 'notes', 'performed_by', 'created_at'] },
+  { sheetName: CONFIG.SHEETS.REPORT_COMMENTS, headers: ['comment_id', 'report_id', 'comment_type', 'message', 'created_by', 'is_internal', 'created_at', 'is_active'] },
+  { sheetName: CONFIG.SHEETS.AUDIT_LOGS, headers: ['audit_id', 'user_id', 'action', 'entity_type', 'entity_id', 'metadata', 'created_at'] },
   { sheetName: CONFIG.SHEETS.SETTINGS, headers: ['setting_key', 'setting_value', 'description', 'updated_at'] },
-  { sheetName: CONFIG.SHEETS.SEQUENCES, headers: ['sequence_key', 'last_value', 'updated_at'] }
+  { sheetName: CONFIG.SHEETS.SEQUENCES, headers: ['sequence_name', 'current_value', 'updated_at'] }
 ];
 
 /**
  * Membuat/memverifikasi seluruh sheet database SIGAP SARPRAS beserta
  * header-nya, dan menginisialisasi baris sequence awal pada 91_sequences
- * (last_value = 0) untuk sequence yang belum ada.
+ * (current_value = 0) untuk sequence yang belum ada.
  *
  * IDEMPOTENT — aman dijalankan berulang kali:
  * - Sheet yang sudah ada dan header-nya sudah sesuai TIDAK disentuh.
@@ -287,29 +296,39 @@ function setupDatabaseEnsureSheet_(spreadsheet, schemaEntry, summary) {
 }
 
 /**
- * Memastikan satu baris sequence ada pada 91_sequences dengan last_value
- * awal 0. TIDAK PERNAH mengubah nilai sequence yang sudah ada.
+ * Memastikan satu baris sequence ada pada 91_sequences dengan
+ * current_value awal 0. TIDAK PERNAH mengubah nilai sequence yang sudah
+ * ada.
+ *
+ * Menggunakan nama kolom canonical (`sequence_name`/`current_value`) —
+ * setupDatabase() sendiri hanya boleh berjalan pada sheet yang headernya
+ * sudah tervalidasi cocok dengan SETUP_DATABASE_SCHEMA_ (lihat TAHAP 1
+ * pada setupDatabase()), sehingga di titik ini nama kolom pasti sudah
+ * canonical. SequenceService.gs (dipakai domain service produksi)
+ * tetap punya alias resolution sendiri untuk sheet yang mungkin belum
+ * melalui setupDatabase() — lihat catatan "SEQUENCE COMPATIBILITY LAYER"
+ * pada SequenceService.gs.
  *
  * @param {string} sequenceKey Nama sequence, mis. CONFIG.SEQUENCES.REPORT.
  * @param {Object} summary Akumulator ringkasan (dimutasi langsung).
  * @private
  */
 function setupDatabaseEnsureSequence_(sequenceKey, summary) {
-  var existing = getRowById(CONFIG.SHEETS.SEQUENCES, 'sequence_key', sequenceKey);
+  var existing = getRowById(CONFIG.SHEETS.SEQUENCES, 'sequence_name', sequenceKey);
 
   if (existing) {
     summary.sequences_verified.push(sequenceKey);
-    Logger.log('[VERIFIED] Sequence "' + sequenceKey + '" sudah ada (last_value=' + existing.last_value + '), tidak diubah.');
+    Logger.log('[VERIFIED] Sequence "' + sequenceKey + '" sudah ada (current_value=' + existing.current_value + '), tidak diubah.');
     return;
   }
 
   insertRow(CONFIG.SHEETS.SEQUENCES, {
-    sequence_key: sequenceKey,
-    last_value: 0,
+    sequence_name: sequenceKey,
+    current_value: 0,
     updated_at: nowTimestamp()
   });
   summary.sequences_created.push(sequenceKey);
-  Logger.log('[CREATED] Sequence "' + sequenceKey + '" diinisialisasi dengan last_value=0.');
+  Logger.log('[CREATED] Sequence "' + sequenceKey + '" diinisialisasi dengan current_value=0.');
 }
 
 /**
@@ -469,13 +488,13 @@ function verifyDatabaseCheckSequence_(sequenceKey, sequencesSheetOk) {
     return { name: sequenceKey, status: 'FAIL', detail: 'Dilewati — sheet 91_sequences tidak valid.' };
   }
 
-  var existing = getRowById(CONFIG.SHEETS.SEQUENCES, 'sequence_key', sequenceKey);
+  var existing = getRowById(CONFIG.SHEETS.SEQUENCES, 'sequence_name', sequenceKey);
 
   if (!existing) {
     return { name: sequenceKey, status: 'FAIL', detail: 'Baris sequence belum ada.' };
   }
 
-  return { name: sequenceKey, status: 'PASS', detail: 'last_value=' + existing.last_value };
+  return { name: sequenceKey, status: 'PASS', detail: 'current_value=' + existing.current_value };
 }
 
 /**

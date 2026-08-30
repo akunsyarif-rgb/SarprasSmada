@@ -34,8 +34,16 @@
  *
  * TIDAK PERNAH membaca/menampilkan isi baris data (data user, data
  * laporan, dsb.) — hanya metadata struktural: nama sheet, jumlah baris,
- * jumlah kolom, dan header. Untuk 91_sequences, hanya `sequence_key` dan
- * `last_value` yang dibaca (bukan data sensitif — sekadar angka counter).
+ * jumlah kolom, dan header. Untuk 91_sequences, hanya `sequence_name` dan
+ * `current_value` yang dibaca (bukan data sensitif — sekadar angka
+ * counter).
+ *
+ * PHASE 3.75 — Legacy-Compatible Reconciliation: schema canonical
+ * `91_sequences` (`sequence_name`/`current_value`) kini mengikuti
+ * struktur database produksi SIGAP SARPRAS yang sudah berjalan nyata
+ * (dikonfirmasi via inspeksi read-only), BUKAN rancangan awal repository
+ * (`sequence_key`/`last_value`) yang tidak pernah dipakai di deployment
+ * mana pun. Lihat docs/DATABASE_SCHEMA.md bagian 91_sequences.
  *
  * Dependency (reuse, tidak menduplikasi):
  * - getSpreadsheet() dari core/Config.gs.
@@ -151,7 +159,7 @@ function inspectDatabaseAsJson() {
     }
   }
 
-  // --- Sequences (91_sequences) — hanya sequence_key/last_value, tanpa data lain ---
+  // --- Sequences (91_sequences) — hanya sequence_name/current_value, tanpa data lain ---
   var sequenceCompat = compatibility.filter(function (c) { return c.sheet_name === CONFIG.SHEETS.SEQUENCES; })[0];
   var sequenceReport = { sheet_status: sequenceCompat.header_status, found: [], expected_but_missing: expectedSequenceKeys.slice() };
 
@@ -164,7 +172,7 @@ function inspectDatabaseAsJson() {
       var rows = sequenceSheet.getRange(2, 1, lastRow - 1, headers.length).getValues(); // read-only
       for (var k = 0; k < rows.length; k++) {
         var rowObj = rowArrayToObject_(headers, rows[k]); // reuse DatabaseService.gs, read-only pure transform
-        sequenceReport.found.push({ sequence_name: rowObj.sequence_key, current_value: rowObj.last_value });
+        sequenceReport.found.push({ sequence_name: rowObj.sequence_name, current_value: rowObj.current_value });
       }
     }
 

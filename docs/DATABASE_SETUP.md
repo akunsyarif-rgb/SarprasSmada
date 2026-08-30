@@ -33,7 +33,7 @@ Jika Anda memang membuat spreadsheet **baru** yang benar-benar kosong (bukan mel
 2. Buat/buka Apps Script project yang terikat ke spreadsheet tersebut (Extensions > Apps Script).
 3. Set `SPREADSHEET_ID` pada Script Properties (bagian 3 di bawah).
 4. Upload/copy seluruh source code `apps-script/` (termasuk `core/`, `users/`, `master-data/`, `tests/`, dan `tools/`) ke project Apps Script tersebut.
-5. Jalankan `setupDatabase()` (dari `apps-script/tools/SetupDatabase.gs`) — membuat seluruh 12 sheet, menulis header sesuai `docs/DATABASE_SCHEMA.md`, dan menginisialisasi 9 baris sequence (`last_value = 0`) secara otomatis. Aman dijalankan berulang kali (lihat bagian "Setup Otomatis via SetupDatabase.gs" di bawah).
+5. Jalankan `setupDatabase()` (dari `apps-script/tools/SetupDatabase.gs`) — membuat seluruh 12 sheet, menulis header sesuai `docs/DATABASE_SCHEMA.md`, dan menginisialisasi 9 baris sequence (`current_value = 0`) secara otomatis. Aman dijalankan berulang kali (lihat bagian "Setup Otomatis via SetupDatabase.gs" di bawah).
 6. Jalankan `verifyDatabaseSetup()` (file yang sama) — memverifikasi tanpa mengubah apa pun, menghasilkan laporan PASS/FAIL per sheet dan per sequence.
 7. Jalankan `runCoreSmokeTest()` (`apps-script/tests/CoreSmokeTest.gs`).
 8. Jalankan `runMasterDataSmokeTest()` (`apps-script/tests/MasterDataSmokeTest.gs`).
@@ -140,22 +140,22 @@ report_id  report_number  reporter_id  location_id  category_id  facility_id  co
 
 **`11_report_photos`**
 ```
-photo_id  report_id  file_url  uploaded_by  caption  created_at
+photo_id  report_id  photo_type  drive_file_id  drive_url  file_name  mime_type  file_size  uploaded_by  uploaded_at  is_active
 ```
 
 **`12_report_history`**
 ```
-history_id  report_id  previous_status  new_status  changed_by  notes  created_at
+history_id  report_id  previous_status  new_status  action  notes  performed_by  created_at
 ```
 
 **`13_report_comments`**
 ```
-comment_id  report_id  author_id  comment_text  is_internal  created_at
+comment_id  report_id  comment_type  message  created_by  is_internal  created_at  is_active
 ```
 
 **`20_audit_logs`**
 ```
-log_id  actor_id  action  entity_type  entity_id  details  created_at
+audit_id  user_id  action  entity_type  entity_id  metadata  created_at
 ```
 
 **`90_settings`**
@@ -165,8 +165,10 @@ setting_key  setting_value  description  updated_at
 
 **`91_sequences`**
 ```
-sequence_key  last_value  updated_at
+sequence_name  current_value  updated_at
 ```
+
+> **PHASE 3.75:** header 5 sheet di atas (`11_report_photos`, `12_report_history`, `13_report_comments`, `20_audit_logs`, `91_sequences`) mengikuti struktur database produksi SIGAP SARPRAS yang sudah berjalan nyata — lihat "Reconciliation Notes" pada `docs/DATABASE_SCHEMA.md` untuk rincian kolom legacy-only vs. repo-only yang direkonsiliasi.
 
 > Catatan `10_reports`, `11_report_photos`, `12_report_history`, `13_report_comments`, `20_audit_logs`, `90_settings`: sheet-sheet ini disiapkan sesuai `docs/DATABASE_SCHEMA.md` untuk PHASE 4/5 (Report Engine, Workflow & Authorization) yang belum diimplementasikan. Membuat header-nya sekarang bersifat opsional tetapi disarankan agar struktur database lengkap sejak awal.
 
@@ -174,9 +176,9 @@ sequence_key  last_value  updated_at
 
 *(Otomatis dilakukan oleh `setupDatabase()` — bagian ini referensi manual.)*
 
-`SequenceService` **tidak membuat baris sequence secara manual** — baris baru otomatis dibuat oleh `getNextSequence()` saat sequence tersebut pertama kali dipakai, dimulai dari nilai `1`. Namun, agar counter yang sudah dikenal sistem eksplisit terlihat sejak awal (dan memudahkan audit), disarankan menambahkan baris awal berikut secara manual dengan `last_value = 0`:
+`SequenceService` **tidak membuat baris sequence secara manual** — baris baru otomatis dibuat oleh `getNextSequence()` saat sequence tersebut pertama kali dipakai, dimulai dari nilai `1`. Namun, agar counter yang sudah dikenal sistem eksplisit terlihat sejak awal (dan memudahkan audit), disarankan menambahkan baris awal berikut secara manual dengan `current_value = 0`:
 
-| `sequence_key` | `last_value` | `updated_at` |
+| `sequence_name` | `current_value` | `updated_at` |
 |---|---|---|
 | `REPORT` | `0` | *(boleh dikosongkan saat inisialisasi)* |
 | `HISTORY` | `0` | *(boleh dikosongkan saat inisialisasi)* |
@@ -184,11 +186,13 @@ sequence_key  last_value  updated_at
 
 Ketiga sequence di atas bersifat **monoton dan tidak pernah direset** (termasuk `REPORT` — tidak ada varian per tahun seperti `REPORT_2026`; tahun pada `report_number` hanya tampilan, lihat `SequenceService.generateReportNumber()`).
 
+> **PHASE 3.75:** kolom `sequence_name`/`current_value` di atas adalah nama canonical — mengikuti database produksi nyata. `core/SequenceService.gs` tetap mengenali alias lama (`sequence_key`/`last_value`) lewat compatibility layer bila suatu sheet dibuat memakainya, tapi tidak perlu Anda tulis manual lagi mulai sekarang.
+
 ### Sequence Tambahan untuk Master Data (PHASE 3)
 
 Domain Master Data menggunakan sequence berikut melalui `SequenceService.generateEntityId()`:
 
-| `sequence_key` | `last_value` | Digunakan oleh | Prefix ID |
+| `sequence_name` | `current_value` | Digunakan oleh | Prefix ID |
 |---|---|---|---|
 | `USER` | `0` | `UserService.createUser()` | `USR` |
 | `LOCATION` | `0` | `LocationService.createLocation()` | `LOC` |
@@ -196,13 +200,13 @@ Domain Master Data menggunakan sequence berikut melalui `SequenceService.generat
 | `FACILITY` | `0` | `FacilityService.createFacility()` | `FAC` |
 | `OWNER` | `0` | `OwnerService.createOwner()` | `OWN` |
 
-Baris-baris ini juga akan dibuat otomatis saat pertama kali dipakai bila belum ada secara manual — menambahkannya di awal hanya untuk kejelasan operasional.
+Baris-baris ini juga akan dibuat otomatis saat pertama kali dipakai bila belum ada secara manual — menambahkannya di awal hanya untuk kejelasan operasional. **Catatan (temuan inspeksi PHASE 3.5):** di database produksi nyata, `Location/Category/Facility/Owner` justru TIDAK memakai sequence sama sekali — ID-nya dibuat dengan skema hex-random terpisah. Baris sequence di atas relevan untuk entitas BARU yang dibuat lewat repository ini ke depan; keputusan final strategi ID master data belum diambil (lihat pembahasan Phase 3.5/3.75 terkait "Master Data ID Strategy").
 
 ### Sequence Khusus Pengujian
 
-| `sequence_key` | `last_value` | Digunakan oleh |
+| `sequence_name` | `current_value` | Digunakan oleh |
 |---|---|---|
-| `CORE_TEST` | `0` | `apps-script/tests/CoreSmokeTest.gs` (pengujian manual Core Backend) |
+| `CORE_TEST` | `0` | `apps-script/tests/CoreSmokeTest.gs`, `apps-script/tests/SequenceCompatibilitySmokeTest.gs` (pengujian manual Core Backend) |
 
 `CORE_TEST` **hanya untuk smoke test**, tidak boleh dipakai oleh domain service produksi mana pun. Baris ini aman untuk di-reset (dihapus lalu dibuat ulang dari 0) kapan saja tanpa memengaruhi data produksi, karena nilainya tidak pernah dirujuk oleh entitas bisnis nyata.
 
@@ -244,7 +248,7 @@ Logika yang sama persis (`inspectExistingDatabase()` adalah pembungkus tampilan 
 
 ### Yang TIDAK Ditampilkan (Privasi Data)
 
-Inspector **tidak pernah** membaca/menampilkan isi baris data (data user, data laporan, dsb.). Untuk setiap sheet hanya ditampilkan: nama sheet, jumlah baris data, jumlah kolom, dan header. Untuk `91_sequences`, hanya `sequence_key` (ditampilkan sebagai `sequence_name`) dan `last_value` (ditampilkan sebagai `current_value`) — bukan data sensitif, sekadar angka counter.
+Inspector **tidak pernah** membaca/menampilkan isi baris data (data user, data laporan, dsb.). Untuk setiap sheet hanya ditampilkan: nama sheet, jumlah baris data, jumlah kolom, dan header. Untuk `91_sequences`, hanya `sequence_name` dan `current_value` yang dibaca — bukan data sensitif, sekadar angka counter.
 
 ### Audit Read-Only InspectDatabase.gs
 
@@ -271,7 +275,7 @@ Hasil yang benar: **tidak ada baris kode** yang cocok (hanya boleh muncul di kom
 
 ### `setupDatabase()`
 
-Membuat sheet yang belum ada beserta headernya, menulis header pada sheet yang sudah ada tapi masih kosong, dan menginisialisasi baris sequence yang belum ada (`last_value = 0`). **Idempotent** — aman dijalankan berulang kali:
+Membuat sheet yang belum ada beserta headernya, menulis header pada sheet yang sudah ada tapi masih kosong, dan menginisialisasi baris sequence yang belum ada (`current_value = 0`). **Idempotent** — aman dijalankan berulang kali:
 
 - Sheet yang sudah ada dan headernya sudah sesuai **tidak disentuh**.
 - Sequence yang sudah ada nilainya **tidak pernah direset/diubah**.
@@ -293,5 +297,6 @@ Setelah `setupDatabase()` dan `verifyDatabaseSetup()` menunjukkan hasil PASS, ja
 1. `runCoreSmokeTest()` (`apps-script/tests/CoreSmokeTest.gs`) — memverifikasi `getSpreadsheetId()`, `getSpreadsheet()`, akses sheet via `DatabaseService`, dan `SequenceService` (increment, `generateEntityId()`, `generateReportNumber()`).
 2. `runMasterDataSmokeTest()` (`apps-script/tests/MasterDataSmokeTest.gs`) — memverifikasi create/get/update/list/deactivate, validasi gagal, deteksi duplikasi, hierarki lokasi, dan validasi facility-category pada data bertanda `TEST_`.
 3. `runInspectDatabaseSmokeTest()` (`apps-script/tests/InspectDatabaseSmokeTest.gs`) — memverifikasi struktur hasil `inspectDatabaseAsJson()`/`inspectExistingDatabase()` dan memastikan pemanggilan berulang tidak menimbulkan efek samping (read-only sungguhan). Aman dijalankan kapan saja, termasuk terhadap spreadsheet lama.
+4. `runSequenceCompatibilitySmokeTest()` (`apps-script/tests/SequenceCompatibilitySmokeTest.gs`, PHASE 3.75) — memverifikasi SEQUENCE COMPATIBILITY LAYER pada `SequenceService.gs`: mendeteksi alias kolom (`sequence_name`/`sequence_key`, `current_value`/`last_value`) yang benar-benar dipakai sheet `91_sequences` nyata, dan memastikan baca-ubah-tulis tetap konsisten lewat kolom tersebut. Hanya memakai sequence `CORE_TEST`, aman dijalankan terhadap spreadsheet produksi.
 
 Lihat hasil eksekusi pada **View > Logs** (atau `Ctrl+Enter` di editor) setelah menjalankan masing-masing fungsi.

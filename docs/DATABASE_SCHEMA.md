@@ -9,6 +9,12 @@ Database sistem disimpan dalam bentuk Google Spreadsheet, dengan setiap sheet me
 
 Seluruh akses terhadap sheet-sheet berikut wajib melalui `DatabaseService` (lihat `docs/ARCHITECTURE.md`) — tidak ada modul domain yang mengakses `SpreadsheetApp` secara langsung.
 
+**PHASE 3.75 — Legacy-Compatible Repository Reconciliation:** skema `11_report_photos`, `12_report_history`, `13_report_comments`, `20_audit_logs`, dan `91_sequences` di bawah ini telah disesuaikan berdasarkan **inspeksi read-only nyata** (via `SpreadsheetApp`, bukan asumsi) terhadap database produksi SIGAP SARPRAS yang sudah berjalan sejak sebelum repository ini dibuat. Setiap sheet yang direkonsiliasi memiliki subbagian **"Reconciliation Notes"** yang membedakan secara eksplisit:
+- **Legacy-only columns** — kolom yang hanya ada di database produksi nyata, tidak pernah ada di dokumentasi awal repository, dan sekarang diadopsi sebagai bagian dari schema canonical.
+- **Repo-only columns** — kolom yang hanya ada di dokumentasi awal repository, tidak pernah benar-benar dipakai di deployment nyata, dan sekarang **dihapus dari schema canonical** (kecuali dinyatakan eksplisit sebagai retensi yang disengaja).
+
+Tidak ada satu pun perubahan terhadap spreadsheet nyata sebagai bagian dari reconciliation ini — hanya dokumentasi dan kode repository yang diselaraskan mengikuti kondisi nyata.
+
 ---
 
 ## Data Master
@@ -121,16 +127,26 @@ Tabel utama yang menyimpan data laporan sarana-prasarana.
 
 ### `11_report_photos`
 
-Menyimpan referensi foto/lampiran yang terkait dengan suatu laporan.
+Menyimpan referensi foto/lampiran yang terkait dengan suatu laporan. Terintegrasi dengan Google Drive untuk penyimpanan berkas aktual.
 
 | Kolom | Deskripsi |
 |---|---|
 | `photo_id` | ID unik foto/lampiran |
 | `report_id` | Referensi ke `10_reports` |
-| `file_url` | URL/tautan berkas foto (mis. tautan Google Drive) |
+| `photo_type` | Kategori/jenis foto (mis. "BEFORE", "AFTER" — nilai pasti akan didefinisikan saat PHASE 4) |
+| `drive_file_id` | ID file pada Google Drive (dipakai untuk operasi Drive API — hapus, re-fetch, dsb.) |
+| `drive_url` | URL/tautan berkas foto di Google Drive |
+| `file_name` | Nama berkas asli saat diunggah |
+| `mime_type` | Tipe MIME berkas (mis. `image/jpeg`) — dipakai untuk validasi format |
+| `file_size` | Ukuran berkas dalam byte — dipakai untuk validasi terhadap `90_settings.MAX_FILE_SIZE_MB` |
 | `uploaded_by` | Referensi ke `01_users` — pengguna yang mengunggah foto |
-| `caption` | Keterangan singkat foto (opsional) |
-| `created_at` | Waktu foto diunggah |
+| `uploaded_at` | Waktu foto diunggah |
+| `is_active` | Status aktif/nonaktif (soft-delete) — konsisten dengan konvensi sheet lain |
+
+**Reconciliation Notes (PHASE 3.75):**
+- **Legacy-only columns** (diadopsi ke canonical): `photo_type`, `drive_file_id`, `drive_url`, `file_name`, `mime_type`, `file_size`, `is_active`.
+- **Repo-only columns** (dihapus dari canonical — tidak pernah dipakai di deployment nyata): `file_url` (digantikan `drive_url`), `caption` (belum ada padanan di database produksi; dapat ditambahkan kembali di PHASE 4 jika dibutuhkan, sebagai kolom baru yang bersifat additive).
+- **Rename**: `created_at` → `uploaded_at` (mengikuti konvensi nyata; secara semantik sama).
 
 ### `12_report_history`
 
@@ -140,11 +156,17 @@ Menyimpan riwayat perubahan status/data pada suatu laporan, digunakan untuk mere
 |---|---|
 | `history_id` | ID unik entri riwayat |
 | `report_id` | Referensi ke `10_reports` |
-| `previous_status` | Status laporan sebelum perubahan |
+| `previous_status` | Status laporan sebelum perubahan (kosong untuk entri pertama, mis. `REPORT_CREATED`) |
 | `new_status` | Status laporan setelah perubahan |
-| `changed_by` | Referensi ke `01_users` — pengguna yang melakukan perubahan |
+| `action` | Jenis aksi yang terjadi (mis. `REPORT_CREATED`, `STATUS_CHANGED`) — lebih deskriptif daripada sekadar before/after status |
 | `notes` | Catatan/keterangan atas perubahan yang dilakukan |
+| `performed_by` | Referensi ke `01_users` — pengguna yang melakukan perubahan |
 | `created_at` | Waktu perubahan terjadi |
+
+**Reconciliation Notes (PHASE 3.75):**
+- **Legacy-only columns** (diadopsi ke canonical): `action`.
+- **Repo-only columns**: tidak ada yang dihapus — seluruh kolom rancangan awal repository tetap ada.
+- **Rename**: `changed_by` → `performed_by` (mengikuti konvensi nyata; secara semantik sama).
 
 ### `13_report_comments`
 
@@ -154,10 +176,17 @@ Menyimpan komunikasi/komentar terkait suatu laporan antara pelapor, penanggung j
 |---|---|
 | `comment_id` | ID unik komentar |
 | `report_id` | Referensi ke `10_reports` |
-| `author_id` | Referensi ke `01_users` — penulis komentar |
-| `comment_text` | Isi komentar |
+| `comment_type` | Kategori/jenis komentar (mis. "NOTE", "QUESTION" — nilai pasti akan didefinisikan saat PHASE 4) |
+| `message` | Isi komentar |
+| `created_by` | Referensi ke `01_users` — penulis komentar |
 | `is_internal` | Penanda apakah komentar bersifat internal (hanya terlihat oleh pihak berwenang) atau dapat dilihat pelapor |
 | `created_at` | Waktu komentar dibuat |
+| `is_active` | Status aktif/nonaktif (soft-delete) — konsisten dengan konvensi sheet lain |
+
+**Reconciliation Notes (PHASE 3.75) — SCHEMA HYBRID:**
+- **Legacy-only columns** (diadopsi ke canonical): `comment_type`, `is_active`.
+- **Repo-only columns RETAINED secara sengaja** (bukan legacy, TIDAK dihapus): `is_internal` — fitur privasi (komentar internal staff vs. terlihat pelapor) belum diimplementasikan di database produksi (sheet ini masih 0 baris di produksi saat inspeksi dilakukan), tetapi tetap relevan untuk PHASE 4/5 dan aman ditambahkan karena tidak ada data yang perlu disesuaikan.
+- **Rename**: `comment_text` → `message`, `author_id` → `created_by` (mengikuti konvensi nyata; secara semantik sama).
 
 ---
 
@@ -169,13 +198,17 @@ Menyimpan jejak audit atas aktivitas penting yang terjadi di seluruh sistem, tid
 
 | Kolom | Deskripsi |
 |---|---|
-| `log_id` | ID unik entri log |
-| `actor_id` | Referensi ke `01_users` — pengguna yang melakukan aksi (dapat kosong untuk aksi sistem otomatis) |
+| `audit_id` | ID unik entri log |
+| `user_id` | Referensi ke `01_users` — pengguna yang melakukan aksi (dapat kosong untuk aksi sistem otomatis) |
 | `action` | Jenis aksi yang dilakukan (mis. `CREATE_REPORT`, `STATUS_CHANGE`, `UPDATE_MASTER_DATA`, `REJECTED_TRANSITION`) |
 | `entity_type` | Jenis entitas yang terdampak (mis. `report`, `user`, `facility`) |
 | `entity_id` | ID entitas yang terdampak |
-| `details` | Detail tambahan terkait aksi (mis. representasi data sebelum/sesudah perubahan) |
+| `metadata` | Detail tambahan terkait aksi dalam bentuk JSON (mis. `report_number`, `status`, `priority` saat itu) |
 | `created_at` | Waktu aksi tercatat |
+
+**Reconciliation Notes (PHASE 3.75):**
+- **Legacy-only / Repo-only columns**: tidak ada penambahan atau penghapusan kolom — struktur (7 kolom, jenis informasi yang sama) identik antara rancangan awal repository dan database produksi.
+- **Rename**: `log_id` → `audit_id`, `actor_id` → `user_id`, `details` → `metadata` (mengikuti konvensi nyata, yang sudah memiliki data produksi berjalan; `audit_id` juga dianggap lebih jelas untuk tabel bernama `20_audit_logs`).
 
 ---
 
@@ -194,13 +227,18 @@ Menyimpan konfigurasi sistem yang bersifat dinamis (dapat diubah tanpa mengubah 
 
 ### `91_sequences`
 
-Menyimpan penghitung (counter) yang digunakan `SequenceService` untuk menghasilkan ID unik dan nomor urut secara konsisten dan bebas duplikasi. Setiap `sequence_key` bersifat **monoton dan tidak pernah direset** (termasuk lintas pergantian tahun) — lihat `docs/DATABASE_SETUP.md` untuk daftar lengkap sequence key yang digunakan sistem beserta nilai awalnya.
+Menyimpan penghitung (counter) yang digunakan `SequenceService` untuk menghasilkan ID unik dan nomor urut secara konsisten dan bebas duplikasi. Setiap `sequence_name` bersifat **monoton dan tidak pernah direset** (termasuk lintas pergantian tahun) — lihat `docs/DATABASE_SETUP.md` untuk daftar lengkap sequence yang digunakan sistem beserta nilai awalnya.
 
 | Kolom | Deskripsi |
 |---|---|
-| `sequence_key` | Kunci unik penghitung (mis. `REPORT`, `HISTORY`, `AUDIT`) |
-| `last_value` | Nilai terakhir yang telah digunakan |
+| `sequence_name` | Kunci unik penghitung (mis. `REPORT`, `HISTORY`, `AUDIT`) |
+| `current_value` | Nilai terakhir yang telah digunakan |
 | `updated_at` | Waktu penghitung terakhir diperbarui |
+
+**Reconciliation Notes (PHASE 3.75) — SEQUENCE COMPATIBILITY LAYER:**
+- **Rename canonical**: `sequence_key` → `sequence_name`, `last_value` → `current_value`. Nama `sequence_key`/`last_value` sebelumnya hanya ada di dokumentasi repository dan **tidak pernah dipakai di deployment nyata mana pun** — `sequence_name`/`current_value` adalah nama yang sudah berjalan di database produksi SIGAP SARPRAS sejak awal.
+- **Tidak ada migrasi spreadsheet** yang dilakukan atau diperlukan untuk perubahan ini — canonical documentation kini hanya mengikuti apa yang sudah nyata berjalan.
+- `core/SequenceService.gs` menerapkan **alias resolution**: mengenali baik `sequence_name` maupun `sequence_key` (demikian pula `current_value`/`last_value`) pada sheet yang sebenarnya, dan menulis balik menggunakan nama kolom yang SAMA dengan yang sudah ada di sheet tersebut — sehingga tetap backward-compatible terhadap sheet yang mungkin dibuat memakai nama kolom versi dokumentasi sebelumnya, tanpa memaksa satu nama tertentu.
 
 ---
 
@@ -208,5 +246,7 @@ Menyimpan penghitung (counter) yang digunakan `SequenceService` untuk menghasilk
 
 - Seluruh kolom `*_id` bersifat unik dalam sheet-nya masing-masing dan dihasilkan melalui `SequenceService` atau mekanisme pembangkitan ID yang konsisten, tidak dibuat secara manual/acak.
 - Seluruh kolom bertipe waktu (`created_at`, `updated_at`, `*_at`) disimpan dalam format timestamp yang konsisten, ditentukan pada `core/Config.gs` atau `core/UtilityService.gs`.
-- Skema Data Master (`01_users` s.d. `05_owners`) telah disesuaikan pada **PHASE 3 — Master Data** agar konsisten dengan validasi dan struktur hierarkis (khusus `02_locations`) yang diimplementasikan pada `apps-script/users/` dan `apps-script/master-data/`. Skema Pelaporan (`10`–`13`) dan Audit (`20`) masih berupa rancangan awal dan akan disempurnakan pada **PHASE 4 — Report Engine** dan **PHASE 5 — Workflow & Authorization**.
+- Skema Data Master (`01_users` s.d. `05_owners`) telah disesuaikan pada **PHASE 3 — Master Data** agar konsisten dengan validasi dan struktur hierarkis (khusus `02_locations`) yang diimplementasikan pada `apps-script/users/` dan `apps-script/master-data/`.
+- Skema `11_report_photos`, `12_report_history`, `13_report_comments`, `20_audit_logs`, dan `91_sequences` telah disesuaikan pada **PHASE 3.75 — Legacy-Compatible Repository Reconciliation** mengikuti struktur database produksi nyata (lihat "Reconciliation Notes" pada masing-masing sheet di atas). `10_reports` sudah cocok 100% dengan produksi sejak awal, tidak berubah.
+- Skema di atas siap dipakai sebagai baseline **PHASE 4 — Report Engine** dan **PHASE 5 — Workflow & Authorization** — implementasi domain `reports/`/`audit/` belum dimulai, hanya schema-nya yang sudah diselaraskan lebih dulu.
 - Petunjuk teknis pembuatan sheet dan nilai awal sequence tersedia di `docs/DATABASE_SETUP.md`.
