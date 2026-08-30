@@ -55,6 +55,23 @@ function isEmpty(value) {
 }
 
 /**
+ * Menormalisasi teks untuk keperluan perbandingan (mis. pengecekan
+ * duplikasi nama/email tanpa mempermasalahkan huruf besar/kecil atau
+ * spasi berlebih di awal/akhir). TIDAK mengubah data yang disimpan,
+ * hanya digunakan untuk perbandingan.
+ *
+ * @param {*} value Nilai yang akan dinormalisasi.
+ * @return {string} Teks dalam huruf kecil tanpa spasi di awal/akhir, atau
+ *   string kosong jika value bukan string/kosong.
+ */
+function normalizeText(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.trim().toLowerCase();
+}
+
+/**
  * Memvalidasi format alamat email secara umum (bukan verifikasi
  * keberadaan email, hanya validasi format).
  *

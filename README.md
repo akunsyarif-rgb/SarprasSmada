@@ -64,11 +64,13 @@ SarprasSmada/
 
 ## Status Pengembangan Saat Ini
 
-Repository berada pada tahap **PHASE 2 — Core Backend** (lihat [`docs/DEVELOPMENT_ROADMAP.md`](docs/DEVELOPMENT_ROADMAP.md)).
+Repository berada pada tahap **PHASE 3 — Master Data** (lihat [`docs/DEVELOPMENT_ROADMAP.md`](docs/DEVELOPMENT_ROADMAP.md)).
 
 Yang sudah selesai:
 
 - **PHASE 1 — Repository Foundation**: struktur repository, dokumentasi arsitektur, workflow, dan skema database.
 - **PHASE 2 — Core Backend**: implementasi `apps-script/core/` (`Config.gs`, `DatabaseService.gs`, `SequenceService.gs`, `UtilityService.gs`) — konfigurasi terpusat, akses database generik ke Google Spreadsheet, dan pembangkitan ID/nomor unik yang aman dari race condition.
+- **PHASE 2.5 — Core Backend Validation**: validation gate atas PHASE 2, termasuk koreksi `generateReportNumber()` agar sequence `REPORT` benar-benar monoton (tidak reset per tahun), dokumentasi eksplisit Aturan Akses Database, dan penyusunan `docs/DATABASE_SETUP.md` beserta `apps-script/tests/CoreSmokeTest.gs`.
+- **PHASE 3 — Master Data**: implementasi domain Users (`UserService.gs`) dan Master Data (`LocationService.gs` dengan struktur hierarkis, `CategoryService.gs`, `FacilityService.gs`, `OwnerService.gs`), lengkap dengan validasi, soft delete, dan smoke test (`apps-script/tests/MasterDataSmokeTest.gs`).
 
-**Domain bisnis (users, master-data, reports, audit) belum diimplementasikan** — folder-folder tersebut masih berupa placeholder. Frontend aplikasi juga belum dikembangkan. Detail lengkap fase pengembangan berikutnya dapat dilihat pada dokumen roadmap.
+**Report Engine dan Audit belum diimplementasikan** — folder `reports/` dan `audit/` masih berupa placeholder. Frontend aplikasi juga belum dikembangkan. Detail lengkap fase pengembangan berikutnya dapat dilihat pada dokumen roadmap.

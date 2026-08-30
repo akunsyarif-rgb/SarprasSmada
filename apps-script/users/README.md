@@ -1,14 +1,21 @@
 # Domain: Users
 
-Domain ini akan berisi layanan (`.gs`) yang mengelola data pengguna sistem SIGAP SARPRAS, merujuk pada sheet `01_users` (lihat `docs/DATABASE_SCHEMA.md`).
+Domain ini berisi layanan (`UserService.gs`) yang mengelola data pengguna sistem SIGAP SARPRAS, merujuk pada sheet `01_users` (lihat `docs/DATABASE_SCHEMA.md`).
 
 ## Status
 
-Belum ada implementasi. Folder ini disiapkan sebagai bagian dari struktur repository pada **PHASE 1 — Repository Foundation**.
+**PHASE 3 — Master Data selesai diimplementasikan** untuk domain ini. `UserService.gs` menyediakan:
 
-## Cakupan yang Direncanakan
+- `createUser(userData)` — validasi email (wajib, format valid, unik), full_name (wajib), dan role (wajib, harus salah satu `CONFIG.ROLES`).
+- `getUserById(userId)`
+- `listActiveUsers()`
+- `updateUser(userId, updates)` — tidak dapat mengubah `is_active` (gunakan `deactivateUser`).
+- `deactivateUser(userId)` — soft delete via `is_active`, tidak ada hard delete.
 
-- Pengelolaan data pengguna (pendaftaran/penyesuaian data, penonaktifan akun).
-- Pengambilan data pengguna berdasarkan peran (role) untuk keperluan otorisasi pada domain `reports`.
+Domain ini **tidak** mengelola autentikasi maupun password — murni pengelolaan data pengguna.
 
-Implementasi dijadwalkan pada **PHASE 3 — Master Data** (lihat `docs/DEVELOPMENT_ROADMAP.md`). Seluruh akses data pada domain ini wajib melalui `apps-script/core/DatabaseService.gs`.
+## Cakupan yang Belum Diimplementasikan
+
+- Pengambilan data pengguna berdasarkan peran (role) untuk keperluan otorisasi pada domain `reports` — akan dikerjakan bersama **PHASE 5 — Workflow & Authorization**.
+
+Seluruh akses data pada domain ini melalui `apps-script/core/DatabaseService.gs` — tidak ada pemanggilan `SpreadsheetApp` langsung (lihat `docs/ARCHITECTURE.md` bagian 4).

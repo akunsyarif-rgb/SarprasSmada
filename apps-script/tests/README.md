@@ -5,7 +5,8 @@ Folder ini berisi skenario pengujian manual untuk service backend Google Apps Sc
 ## Status
 
 - `CoreSmokeTest.gs` — **tersedia**. Smoke test untuk PHASE 2 — Core Backend (`Config.gs`, `DatabaseService.gs`, `SequenceService.gs`). Jalankan `runCoreSmokeTest()`.
-- Pengujian formal untuk domain Master Data, Report Engine, dan Workflow akan ditambahkan mengikuti tahap implementasinya masing-masing.
+- `MasterDataSmokeTest.gs` — **tersedia**. Smoke test untuk PHASE 3 — Master Data (`UserService.gs`, `LocationService.gs`, `CategoryService.gs`, `FacilityService.gs`, `OwnerService.gs`), mencakup create/get/update/list/deactivate, validasi gagal, deteksi duplikasi, validasi hierarki lokasi (parent-child, anti-circular), dan validasi facility-category. Jalankan `runMasterDataSmokeTest()`. Seluruh data uji ditandai awalan `TEST_` dan dinonaktifkan (bukan dihapus) di akhir skenario.
+- Pengujian formal untuk Report Engine dan Workflow akan ditambahkan mengikuti tahap implementasinya masing-masing.
 
 ## Prinsip Pengujian di Repository Ini
 

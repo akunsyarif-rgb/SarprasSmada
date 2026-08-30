@@ -63,6 +63,11 @@ var CONFIG = {
     REPORT: 'REPORT',
     HISTORY: 'HISTORY',
     AUDIT: 'AUDIT',
+    USER: 'USER',
+    LOCATION: 'LOCATION',
+    CATEGORY: 'CATEGORY',
+    FACILITY: 'FACILITY',
+    OWNER: 'OWNER',
     CORE_TEST: 'CORE_TEST'
   },
 
@@ -71,7 +76,27 @@ var CONFIG = {
     REPORT: 'RPT',
     HISTORY: 'HIS',
     AUDIT: 'AUD',
+    USER: 'USR',
+    LOCATION: 'LOC',
+    CATEGORY: 'CAT',
+    FACILITY: 'FAC',
+    OWNER: 'OWN',
     CORE_TEST: 'TST'
+  },
+
+  /**
+   * Nilai peran (role) pengguna yang sah pada sistem, sesuai
+   * docs/DATABASE_SCHEMA.md (01_users.role). Ini adalah daftar KANONIK —
+   * UserService WAJIB menolak nilai role di luar daftar ini. Penambahan
+   * role baru wajib didokumentasikan di sini dan di docs/DATABASE_SCHEMA.md.
+   */
+  ROLES: {
+    SISWA: 'SISWA',
+    GURU: 'GURU',
+    STAF: 'STAF',
+    VERIFIKATOR: 'VERIFIKATOR',
+    OWNER: 'OWNER',
+    ADMIN: 'ADMIN'
   }
 };
 

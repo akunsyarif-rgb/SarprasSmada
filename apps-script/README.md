@@ -4,13 +4,16 @@ Direktori ini berisi source code backend SIGAP SARPRAS yang berjalan di atas Goo
 
 ## Status
 
-**PHASE 2 — Core Backend selesai diimplementasikan.** Modul `core/` (`Config.gs`, `DatabaseService.gs`, `SequenceService.gs`, `UtilityService.gs`) sudah berisi implementasi fungsional dan siap digunakan oleh domain services.
+**PHASE 3 — Master Data selesai diimplementasikan** (di atas PHASE 2 — Core Backend yang juga sudah selesai dan telah melalui validation gate PHASE 2.5).
 
-Domain `users/`, `master-data/`, `reports/`, `audit/`, dan `tests/` **masih berupa placeholder** (belum ada implementasi logika bisnis) dan akan dikerjakan bertahap mengikuti `docs/DEVELOPMENT_ROADMAP.md`.
+- `core/` — `Config.gs`, `DatabaseService.gs`, `SequenceService.gs`, `UtilityService.gs`: fungsional, telah divalidasi (lihat `apps-script/tests/CoreSmokeTest.gs`).
+- `users/` — `UserService.gs`: fungsional.
+- `master-data/` — `LocationService.gs`, `CategoryService.gs`, `FacilityService.gs`, `OwnerService.gs`: fungsional (lihat `apps-script/tests/MasterDataSmokeTest.gs`).
+- `reports/`, `audit/` — **masih placeholder** (belum ada implementasi logika bisnis), dijadwalkan pada PHASE 4 dan PHASE 5.
 
 ### Persiapan Sebelum Menjalankan
 
-Sebelum core backend dapat berfungsi, Spreadsheet ID database wajib diset sebagai Script Property dengan key `SPREADSHEET_ID` (Project Settings > Script Properties pada editor Apps Script). Spreadsheet tersebut wajib memiliki sheet-sheet sesuai `docs/DATABASE_SCHEMA.md`, termasuk `91_sequences` dengan kolom `sequence_key`, `last_value`, dan `updated_at`.
+Sebelum backend dapat berfungsi, ikuti panduan lengkap pada **`docs/DATABASE_SETUP.md`**: membuat spreadsheet, menyimpan `SPREADSHEET_ID` di Script Properties, membuat seluruh sheet dan header sesuai `docs/DATABASE_SCHEMA.md`, serta menyiapkan sequence awal pada `91_sequences`.
 
 ## Struktur Domain
 
