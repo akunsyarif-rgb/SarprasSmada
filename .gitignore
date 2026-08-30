@@ -1,0 +1,25 @@
+# Google Apps Script (clasp)
+.clasp.json
+.clasprc.json
+
+# Dependencies
+node_modules/
+
+# Environment / secrets
+.env
+.env.local
+*.env
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build output
+dist/
+build/
