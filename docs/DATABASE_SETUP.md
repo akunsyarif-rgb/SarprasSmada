@@ -8,7 +8,26 @@ Skema lengkap tiap sheet (deskripsi kolom) ada di [`docs/DATABASE_SCHEMA.md`](DA
 
 ---
 
-## Workflow yang Direkomendasikan
+## ⚠️ Punya Spreadsheet Lama? Baca Ini Dulu
+
+**Jangan asumsikan database Anda kosong.** SIGAP SARPRAS pernah dikembangkan langsung di atas Google Apps Script + Google Spreadsheet **sebelum** repository ini dibuat. Jika Anda punya spreadsheet SIGAP SARPRAS dari sebelumnya, kemungkinan besar sudah berisi sheet, data, dan/atau sequence.
+
+**Jangan langsung menjalankan `setupDatabase()` terhadap spreadsheet lama.** Ikuti urutan berikut:
+
+```
+DISCOVER → READ-ONLY INSPECTION → COMPARE → MIGRATION PLAN (bila perlu) → SAFE UPDATE
+```
+
+1. **DISCOVER + INSPECT**: set `SPREADSHEET_ID` pada Script Properties ke spreadsheet **lama** Anda (bagian 3 di bawah — langkah ini sendiri tidak mengubah apa pun di spreadsheet, hanya konfigurasi Apps Script). Jalankan `inspectExistingDatabase()` dari `apps-script/tools/InspectDatabase.gs` — **read-only sepenuhnya**, tidak pernah menulis. Lihat bagian "Inspeksi Database Lama via InspectDatabase.gs" di bawah untuk detail lengkap.
+2. **COMPARE**: baca hasilnya — `STATUS: READY` / `PARTIAL` / `MISMATCH_FOUND`, plus rincian sheet yang cocok, hilang, asing, dan mismatch kolom apa saja.
+3. **MIGRATION PLAN (bila perlu)**: jika `STATUS` bukan `READY`, jangan jalankan `setupDatabase()` dulu — bagikan hasil inspeksi (JSON dari `inspectDatabaseAsJson()`, atau log dari `inspectExistingDatabase()`) untuk direview dan disusun rencana penyesuaian yang aman (additive-only, tidak menghapus/menimpa data).
+4. **SAFE UPDATE**: hanya setelah rencana disetujui, baru lanjutkan ke `setupDatabase()` (yang tetap tidak akan menimpa sheet dengan header yang sudah tidak cocok — lihat bagian setup di bawah) atau penyesuaian manual terarah.
+
+Jika Anda memang membuat spreadsheet **baru** yang benar-benar kosong (bukan melanjutkan yang lama), langsung ke "Workflow Database Baru" di bawah — langkah inspeksi tetap aman dijalankan meski hasilnya `PARTIAL` untuk spreadsheet kosong (bukan error).
+
+---
+
+## Workflow Database Baru (Kosong)
 
 1. Buat Google Spreadsheet kosong (bagian 1 di bawah).
 2. Buat/buka Apps Script project yang terikat ke spreadsheet tersebut (Extensions > Apps Script).
@@ -189,7 +208,64 @@ Baris-baris ini juga akan dibuat otomatis saat pertama kali dipakai bila belum a
 
 Jika ke depannya sequence tambahan diperlukan (mis. domain baru), tambahkan konstantanya secara konsisten pada `CONFIG.SEQUENCES` (`core/Config.gs`) dan dokumentasikan baris awalnya di tabel pada dokumen ini.
 
-## 7. Setup Otomatis via SetupDatabase.gs
+## 7. Inspeksi Database Lama via InspectDatabase.gs
+
+`apps-script/tools/InspectDatabase.gs` adalah utility **READ-ONLY sepenuhnya** (tidak ada satu pun method penulisan Spreadsheet yang dipanggil) untuk melakukan **discovery** terhadap spreadsheet yang sudah ada — termasuk spreadsheet lama SIGAP SARPRAS yang mungkin sudah berisi sheet/data/sequence dari sebelum repository ini dibuat. Wajib dijalankan **sebelum** `setupDatabase()` jika Anda tidak yakin kondisi spreadsheet-nya (lihat peringatan di awal dokumen ini).
+
+Dua fungsi yang tersedia:
+
+### `inspectExistingDatabase()`
+
+Mencetak hasil inspeksi ke Logger dalam format human-readable, dipisah jelas menjadi tiga bagian:
+
+```
+DATABASE_INSPECTION_RESULT
+STATUS: READY | PARTIAL | MISMATCH_FOUND
+
+---------------- EXPECTED SCHEMA ----------------
+(12 sheet + header resminya, sesuai docs/DATABASE_SCHEMA.md)
+
+---------------- ACTUAL DATABASE ----------------
+(sheet yang benar-benar ditemukan, sheet yang hilang, sheet asing di luar schema,
+ masing-masing dengan jumlah baris data, jumlah kolom, dan header — TANPA isi data)
+
+---------------- COMPATIBILITY RESULT ----------------
+(per sheet: MATCH / MISMATCH / EMPTY / NOT_FOUND, beserta kolom yang hilang/asing bila ada)
+```
+
+Arti `STATUS`:
+- **`READY`** — seluruh 12 sheet ada dan headernya cocok 100% dengan `docs/DATABASE_SCHEMA.md`. Aman melanjutkan ke `setupDatabase()` (tidak akan melakukan apa-apa selain memverifikasi) atau langsung ke domain service.
+- **`PARTIAL`** — tidak ada konflik struktur, tapi ada sheet yang belum ada/masih kosong (termasuk kasus spreadsheet benar-benar kosong). Aman melanjutkan ke `setupDatabase()` — ia akan melengkapi sheet yang belum ada tanpa menyentuh yang sudah benar.
+- **`MISMATCH_FOUND`** — ada sheet yang SUDAH memiliki header, tapi berbeda dari schema resmi (kolom hilang dan/atau kolom asing). **Jangan** jalankan `setupDatabase()` dulu — `setupDatabase()` sendiri akan menolak jalan dan melempar `SCHEMA_MISMATCH` yang sama, tapi tujuan Inspector adalah memberi Anda gambaran lengkap SEMUA sheet bermasalah sekaligus (bukan satu per satu), untuk menyusun rencana migrasi.
+
+### `inspectDatabaseAsJson()`
+
+Logika yang sama persis (`inspectExistingDatabase()` adalah pembungkus tampilan di atasnya), tapi mengembalikan objek terstruktur alih-alih mencetak ke Logger — berguna untuk disalin sebagai JSON dan dikirim untuk dianalisis lebih lanjut. Untuk menyalinnya dari editor Apps Script: jalankan fungsi ini, buka **View > Logs**, atau tambahkan sementara `Logger.log(JSON.stringify(inspectDatabaseAsJson()))` bila butuh bentuk JSON persis.
+
+### Yang TIDAK Ditampilkan (Privasi Data)
+
+Inspector **tidak pernah** membaca/menampilkan isi baris data (data user, data laporan, dsb.). Untuk setiap sheet hanya ditampilkan: nama sheet, jumlah baris data, jumlah kolom, dan header. Untuk `91_sequences`, hanya `sequence_key` (ditampilkan sebagai `sequence_name`) dan `last_value` (ditampilkan sebagai `current_value`) — bukan data sensitif, sekadar angka counter.
+
+### Audit Read-Only InspectDatabase.gs
+
+Kepatuhan "tidak ada operasi tulis" pada `InspectDatabase.gs` diverifikasi melalui audit statis (grep) terhadap source code-nya, dijalankan sebelum setiap commit:
+
+```bash
+grep -nE "setValue|setValues|appendRow|insertSheet|deleteSheet|deleteRow|\.clear\(|clearContents|clearFormat|copyTo|moveTo" apps-script/tools/InspectDatabase.gs
+```
+
+Hasil yang benar: **tidak ada baris kode** yang cocok (hanya boleh muncul di komentar/dokumentasi yang menjelaskan larangan tersebut, bukan pemanggilan fungsi sungguhan).
+
+### Cara Menjalankan (termasuk dari iPad)
+
+1. Buka project Apps Script yang `SPREADSHEET_ID`-nya sudah diarahkan ke spreadsheet yang ingin diinspeksi (lihat bagian 3) — bisa lewat Safari di iPad, tidak butuh aplikasi tambahan.
+2. Pastikan source code `apps-script/tools/InspectDatabase.gs` (dan dependency-nya: `core/Config.gs`, `core/DatabaseService.gs`, `core/UtilityService.gs`, `apps-script/tools/SetupDatabase.gs`) sudah ter-copy ke project tersebut.
+3. Di dropdown pemilihan fungsi (bagian atas editor), pilih `inspectExistingDatabase`, lalu klik **Run** (ikon ▷).
+4. Google akan meminta otorisasi izin akses spreadsheet pada pemanggilan pertama — ini normal, setujui.
+5. Buka **View > Execution log** (atau `Ctrl+Enter`/`Cmd+Enter`) untuk melihat hasilnya.
+6. Copy seluruh log tersebut untuk dibagikan/dianalisis lebih lanjut.
+
+## 8. Setup Otomatis via SetupDatabase.gs
 
 `apps-script/tools/SetupDatabase.gs` adalah **one-time infrastructure utility** (bukan domain service, bukan bagian alur produksi) yang mengotomasi bagian 4–6 di atas. Dua fungsi yang tersedia:
 
@@ -210,11 +286,12 @@ Cara menjalankan: di editor Apps Script, pilih fungsi `setupDatabase` pada dropd
 
 Read-only — **tidak mengubah apa pun**. Memeriksa keberadaan dan kesesuaian header seluruh 12 sheet serta keberadaan seluruh 9 baris sequence, lalu mencetak laporan PASS/FAIL per item ke Logger (format tabel `NAMA_SHEET  PASS/FAIL`). Gunakan ini untuk memeriksa status database kapan saja tanpa risiko mengubah apa pun — termasuk sebagai pemeriksaan rutin setelah setup awal.
 
-## 8. Verifikasi Akhir dengan Smoke Test
+## 9. Verifikasi Akhir dengan Smoke Test
 
-Setelah `setupDatabase()` dan `verifyDatabaseSetup()` menunjukkan hasil PASS, jalankan kedua smoke test berikut secara manual dari editor Apps Script untuk memverifikasi domain Core Backend dan Master Data:
+Setelah `setupDatabase()` dan `verifyDatabaseSetup()` menunjukkan hasil PASS, jalankan smoke test berikut secara manual dari editor Apps Script untuk memverifikasi domain Core Backend dan Master Data:
 
 1. `runCoreSmokeTest()` (`apps-script/tests/CoreSmokeTest.gs`) — memverifikasi `getSpreadsheetId()`, `getSpreadsheet()`, akses sheet via `DatabaseService`, dan `SequenceService` (increment, `generateEntityId()`, `generateReportNumber()`).
 2. `runMasterDataSmokeTest()` (`apps-script/tests/MasterDataSmokeTest.gs`) — memverifikasi create/get/update/list/deactivate, validasi gagal, deteksi duplikasi, hierarki lokasi, dan validasi facility-category pada data bertanda `TEST_`.
+3. `runInspectDatabaseSmokeTest()` (`apps-script/tests/InspectDatabaseSmokeTest.gs`) — memverifikasi struktur hasil `inspectDatabaseAsJson()`/`inspectExistingDatabase()` dan memastikan pemanggilan berulang tidak menimbulkan efek samping (read-only sungguhan). Aman dijalankan kapan saja, termasuk terhadap spreadsheet lama.
 
 Lihat hasil eksekusi pada **View > Logs** (atau `Ctrl+Enter` di editor) setelah menjalankan masing-masing fungsi.

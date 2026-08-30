@@ -10,11 +10,11 @@ Direktori ini berisi source code backend SIGAP SARPRAS yang berjalan di atas Goo
 - `users/` — `UserService.gs`: fungsional.
 - `master-data/` — `LocationService.gs`, `CategoryService.gs`, `FacilityService.gs`, `OwnerService.gs`: fungsional (lihat `apps-script/tests/MasterDataSmokeTest.gs`).
 - `reports/`, `audit/` — **masih placeholder** (belum ada implementasi logika bisnis), dijadwalkan pada PHASE 4 dan PHASE 5.
-- `tools/` — `SetupDatabase.gs`: **one-time infrastructure utility** (bukan domain service) untuk membuat sheet/header/sequence awal. Lihat `docs/DATABASE_SETUP.md`.
+- `tools/` — **one-time infrastructure utility** (bukan domain service): `InspectDatabase.gs` (READ-ONLY, discovery database yang sudah ada) dan `SetupDatabase.gs` (membuat sheet/header/sequence awal). Lihat `docs/DATABASE_SETUP.md`.
 
 ### Persiapan Sebelum Menjalankan
 
-Sebelum backend dapat berfungsi, ikuti panduan lengkap pada **`docs/DATABASE_SETUP.md`**: membuat spreadsheet, menyimpan `SPREADSHEET_ID` di Script Properties, membuat seluruh sheet dan header sesuai `docs/DATABASE_SCHEMA.md`, serta menyiapkan sequence awal pada `91_sequences`.
+**Jangan asumsikan database Anda kosong** — SIGAP SARPRAS pernah dikembangkan langsung di Apps Script sebelum repository ini ada. Ikuti panduan lengkap pada **`docs/DATABASE_SETUP.md`**, dimulai dari bagian "Punya Spreadsheet Lama? Baca Ini Dulu": inspeksi dulu via `InspectDatabase.gs` (read-only) sebelum menjalankan `SetupDatabase.gs`.
 
 ## Struktur Domain
 
@@ -32,7 +32,7 @@ Sebelum backend dapat berfungsi, ikuti panduan lengkap pada **`docs/DATABASE_SET
 
 - Setiap domain (`users/`, `master-data/`, `reports/`, `audit/`) **dilarang** memanggil `SpreadsheetApp` secara langsung. Seluruh akses data wajib melalui fungsi generik `core/DatabaseService.gs` (`getAllRows`, `getRowById`, `findRows`, `insertRow`, `updateRowById`).
 - **Pengecualian pertama**: `core/SequenceService.gs` boleh mengakses sheet `91_sequences` secara langsung, semata-mata agar operasi READ → INCREMENT → WRITE pada counter sequence tetap atomik dalam satu `LockService.getScriptLock()`.
-- **Pengecualian kedua**: `apps-script/tools/SetupDatabase.gs` — utility infrastruktur one-time, bukan domain — boleh mengakses `SpreadsheetApp` langsung untuk operasi STRUKTUR (membuat sheet, menulis header) yang tidak disediakan `DatabaseService`, tetapi tetap wajib memakai `DatabaseService`/`Config.gs` untuk operasi DATA.
+- **Pengecualian kedua**: `apps-script/tools/SetupDatabase.gs` — utility infrastruktur one-time, bukan domain — boleh mengakses `SpreadsheetApp` langsung untuk operasi STRUKTUR (membuat sheet, menulis header) yang tidak disediakan `DatabaseService`, tetapi tetap wajib memakai `DatabaseService`/`Config.gs` untuk operasi DATA. `apps-script/tools/InspectDatabase.gs` juga di folder yang sama, tapi READ-ONLY sepenuhnya — tidak butuh pengecualian penulisan sama sekali.
 - Lihat `docs/ARCHITECTURE.md` bagian 4 (Aturan Akses Database) untuk penjelasan lengkap kedua pengecualian ini.
 - Seluruh konfigurasi (ID spreadsheet, nama sheet, konstanta status, prefix ID, dsb.) hanya didefinisikan di `core/Config.gs`.
 - ID unik dan nomor urut (mis. nomor laporan) hanya dihasilkan melalui `core/SequenceService.gs`.
