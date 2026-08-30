@@ -22,7 +22,7 @@ Menyimpan data pengguna sistem.
 | `user_id` | ID unik pengguna |
 | `email` | Alamat email pengguna (identitas login) |
 | `full_name` | Nama lengkap pengguna |
-| `role` | Peran pengguna dalam sistem (mis. `SISWA`, `GURU`, `STAF`, `VERIFIKATOR`, `OWNER`, `ADMIN`) |
+| `role` | Peran pengguna dalam sistem — wajib salah satu nilai kanonik pada `CONFIG.ROLES` (`SISWA`, `GURU`, `STAF`, `VERIFIKATOR`, `OWNER`, `ADMIN`); penambahan role baru wajib didokumentasikan di sini dan di `core/Config.gs` |
 | `student_id` | Nomor induk siswa (khusus role siswa, dapat kosong untuk role lain) |
 | `class_name` | Nama kelas (khusus role siswa, dapat kosong untuk role lain) |
 | `owner_id` | Referensi ke `05_owners`, apabila pengguna terasosiasi dengan suatu unit penanggung jawab |
@@ -32,15 +32,15 @@ Menyimpan data pengguna sistem.
 
 ### `02_locations`
 
-Menyimpan data lokasi/ruang di lingkungan sekolah.
+Menyimpan data lokasi/ruang di lingkungan sekolah, mendukung struktur hierarkis (parent-child) — mis. Sekolah → Gedung A → Lantai 1 → Ruang Kelas X.
 
 | Kolom | Deskripsi |
 |---|---|
 | `location_id` | ID unik lokasi |
-| `location_name` | Nama lokasi (mis. "Ruang Kelas X IPA 1", "Laboratorium Komputer") |
-| `building` | Nama gedung/blok |
-| `floor` | Lantai |
-| `description` | Keterangan tambahan mengenai lokasi |
+| `parent_id` | Referensi ke `02_locations` lain (lokasi induk); kosong jika lokasi berada di level teratas |
+| `location_name` | Nama lokasi (mis. "Ruang Kelas X IPA 1", "Lantai 1") |
+| `location_type` | Jenis/tingkatan lokasi (mis. "GEDUNG", "LANTAI", "RUANG") |
+| `location_path` | Jalur hierarki lengkap yang dihasilkan otomatis oleh `LocationService`, mis. "Gedung A > Lantai 1 > Ruang Kelas X" |
 | `is_active` | Status aktif/nonaktif data lokasi |
 | `created_at` | Waktu data dibuat |
 | `updated_at` | Waktu data terakhir diperbarui |
@@ -52,8 +52,7 @@ Menyimpan kategori kerusakan/gangguan sarana-prasarana.
 | Kolom | Deskripsi |
 |---|---|
 | `category_id` | ID unik kategori |
-| `category_name` | Nama kategori (mis. "Listrik", "Kebersihan", "Furnitur", "IT/Jaringan") |
-| `default_priority` | Prioritas bawaan sistem untuk kategori ini, digunakan sebagai referensi awal `system_priority` pada laporan |
+| `category_name` | Nama kategori (mis. "Listrik", "Kebersihan", "Furnitur", "IT/Jaringan"); unik di antara kategori yang aktif (`is_active = true`) |
 | `description` | Keterangan tambahan mengenai kategori |
 | `is_active` | Status aktif/nonaktif data kategori |
 | `created_at` | Waktu data dibuat |
@@ -66,11 +65,8 @@ Menyimpan data fasilitas/aset sarana-prasarana.
 | Kolom | Deskripsi |
 |---|---|
 | `facility_id` | ID unik fasilitas |
+| `category_id` | Referensi ke `03_categories` — wajib merujuk kategori yang valid dan aktif |
 | `facility_name` | Nama fasilitas/aset (mis. "AC Ruang Guru", "Proyektor Kelas XI IPA 2") |
-| `location_id` | Referensi ke `02_locations` — lokasi fasilitas berada |
-| `category_id` | Referensi ke `03_categories` — kategori fasilitas |
-| `asset_code` | Kode inventaris aset (jika tersedia) |
-| `condition_baseline` | Kondisi acuan/standar fasilitas saat data dimasukkan |
 | `is_active` | Status aktif/nonaktif data fasilitas |
 | `created_at` | Waktu data dibuat |
 | `updated_at` | Waktu data terakhir diperbarui |
@@ -82,9 +78,7 @@ Menyimpan data pihak/unit yang bertanggung jawab menindaklanjuti laporan.
 | Kolom | Deskripsi |
 |---|---|
 | `owner_id` | ID unik owner/penanggung jawab |
-| `owner_name` | Nama unit/pihak penanggung jawab (mis. "Tim Sarpras", "Petugas Kebersihan", "Teknisi IT") |
-| `contact_person` | Nama kontak/perwakilan unit |
-| `contact_info` | Informasi kontak (email/nomor telepon) |
+| `owner_name` | Nama unit/pihak penanggung jawab (mis. "Tim Sarpras", "Petugas Kebersihan", "Teknisi IT"); unik di antara owner yang aktif (`is_active = true`) |
 | `description` | Keterangan tambahan mengenai unit/pihak |
 | `is_active` | Status aktif/nonaktif data owner |
 | `created_at` | Waktu data dibuat |
@@ -101,7 +95,7 @@ Tabel utama yang menyimpan data laporan sarana-prasarana.
 | Kolom | Deskripsi |
 |---|---|
 | `report_id` | ID unik internal laporan |
-| `report_number` | Nomor laporan yang ditampilkan ke pengguna, dihasilkan oleh `SequenceService` (mis. format `RPT-2026-00001`) |
+| `report_number` | Nomor laporan yang ditampilkan ke pengguna, dihasilkan oleh `SequenceService.generateReportNumber()` (format `SRP-YYYY-000001`, mis. `SRP-2026-000001`). Tahun hanya bersifat tampilan; angka urut di baliknya berasal dari sequence `REPORT` yang monoton dan tidak pernah reset per tahun (lihat `docs/DATABASE_SETUP.md`) |
 | `reporter_id` | Referensi ke `01_users` — pengguna yang membuat laporan |
 | `location_id` | Referensi ke `02_locations` |
 | `category_id` | Referensi ke `03_categories` |
@@ -200,11 +194,11 @@ Menyimpan konfigurasi sistem yang bersifat dinamis (dapat diubah tanpa mengubah 
 
 ### `91_sequences`
 
-Menyimpan penghitung (counter) yang digunakan `SequenceService` untuk menghasilkan ID unik dan nomor urut secara konsisten dan bebas duplikasi.
+Menyimpan penghitung (counter) yang digunakan `SequenceService` untuk menghasilkan ID unik dan nomor urut secara konsisten dan bebas duplikasi. Setiap `sequence_key` bersifat **monoton dan tidak pernah direset** (termasuk lintas pergantian tahun) — lihat `docs/DATABASE_SETUP.md` untuk daftar lengkap sequence key yang digunakan sistem beserta nilai awalnya.
 
 | Kolom | Deskripsi |
 |---|---|
-| `sequence_key` | Kunci unik penghitung (mis. `REPORT_NUMBER_2026`) |
+| `sequence_key` | Kunci unik penghitung (mis. `REPORT`, `HISTORY`, `AUDIT`) |
 | `last_value` | Nilai terakhir yang telah digunakan |
 | `updated_at` | Waktu penghitung terakhir diperbarui |
 
@@ -214,4 +208,5 @@ Menyimpan penghitung (counter) yang digunakan `SequenceService` untuk menghasilk
 
 - Seluruh kolom `*_id` bersifat unik dalam sheet-nya masing-masing dan dihasilkan melalui `SequenceService` atau mekanisme pembangkitan ID yang konsisten, tidak dibuat secara manual/acak.
 - Seluruh kolom bertipe waktu (`created_at`, `updated_at`, `*_at`) disimpan dalam format timestamp yang konsisten, ditentukan pada `core/Config.gs` atau `core/UtilityService.gs`.
-- Skema ini merupakan rancangan awal pada tahap **PHASE 1 — Repository Foundation**. Detail tipe data, indeks, dan validasi tambahan akan disempurnakan pada tahap **PHASE 2 — Core Backend** dan **PHASE 3 — Master Data**.
+- Skema Data Master (`01_users` s.d. `05_owners`) telah disesuaikan pada **PHASE 3 — Master Data** agar konsisten dengan validasi dan struktur hierarkis (khusus `02_locations`) yang diimplementasikan pada `apps-script/users/` dan `apps-script/master-data/`. Skema Pelaporan (`10`–`13`) dan Audit (`20`) masih berupa rancangan awal dan akan disempurnakan pada **PHASE 4 — Report Engine** dan **PHASE 5 — Workflow & Authorization**.
+- Petunjuk teknis pembuatan sheet dan nilai awal sequence tersedia di `docs/DATABASE_SETUP.md`.

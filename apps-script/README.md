@@ -25,9 +25,11 @@ Sebelum core backend dapat berfungsi, Spreadsheet ID database wajib diset sebaga
 
 ## Prinsip Penulisan Kode
 
-- Setiap domain hanya boleh berkomunikasi dengan Google Spreadsheet melalui `core/DatabaseService.gs` — tidak ada pemanggilan `SpreadsheetApp` secara langsung di luar `core/`.
-- Seluruh konfigurasi (ID spreadsheet, nama sheet, konstanta status, dsb.) hanya didefinisikan di `core/Config.gs`.
+- Setiap domain (`users/`, `master-data/`, `reports/`, `audit/`) **dilarang** memanggil `SpreadsheetApp` secara langsung. Seluruh akses data wajib melalui fungsi generik `core/DatabaseService.gs` (`getAllRows`, `getRowById`, `findRows`, `insertRow`, `updateRowById`).
+- **Satu-satunya pengecualian**: `core/SequenceService.gs` boleh mengakses sheet `91_sequences` secara langsung, semata-mata agar operasi READ → INCREMENT → WRITE pada counter sequence tetap atomik dalam satu `LockService.getScriptLock()`. Lihat `docs/ARCHITECTURE.md` bagian 4 (Aturan Akses Database) untuk penjelasan lengkap.
+- Seluruh konfigurasi (ID spreadsheet, nama sheet, konstanta status, prefix ID, dsb.) hanya didefinisikan di `core/Config.gs`.
 - ID unik dan nomor urut (mis. nomor laporan) hanya dihasilkan melalui `core/SequenceService.gs`.
+- Jika suatu domain perlu memvalidasi data milik domain lain, gunakan `DatabaseService` langsung ke sheet domain tersebut — jangan memanggil fungsi domain service lain (mencegah dependency melingkar antar domain).
 - Perubahan status laporan wajib melalui validasi eksplisit pada domain `reports/` sesuai `docs/WORKFLOW.md`; transisi ilegal wajib ditolak.
 - Aktivitas penting wajib dicatat melalui domain `audit/`.
 

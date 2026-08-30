@@ -49,21 +49,29 @@ var CONFIG = {
 
   /**
    * Nama sequence yang dikelola SequenceService melalui sheet 91_sequences.
-   * Digunakan sebagai kunci dasar (base key) — SequenceService dapat
-   * menurunkan kunci turunan darinya (mis. sequence bertahun untuk nomor
-   * laporan publik).
+   * Setiap key merepresentasikan SATU baris counter monoton pada sheet
+   * tersebut dan TIDAK PERNAH direset (mis. tidak ada varian per tahun
+   * seperti "REPORT_2026"). Lihat SequenceService.generateReportNumber()
+   * untuk contoh bagaimana tahun tampilan tetap terpisah dari nilai
+   * counter yang monoton.
+   *
+   * CORE_TEST khusus digunakan oleh apps-script/tests/CoreSmokeTest.gs
+   * untuk pengujian manual dan tidak boleh dipakai oleh domain service
+   * produksi.
    */
   SEQUENCES: {
     REPORT: 'REPORT',
     HISTORY: 'HISTORY',
-    AUDIT: 'AUDIT'
+    AUDIT: 'AUDIT',
+    CORE_TEST: 'CORE_TEST'
   },
 
   /** Prefix ID entitas, digunakan bersama SequenceService.generateEntityId(). */
   ID_PREFIXES: {
     REPORT: 'RPT',
     HISTORY: 'HIS',
-    AUDIT: 'AUD'
+    AUDIT: 'AUD',
+    CORE_TEST: 'TST'
   }
 };
 

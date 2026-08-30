@@ -169,21 +169,27 @@ function generateEntityId(prefix, sequenceName) {
 }
 
 /**
- * Membuat nomor laporan publik dengan format "SRP-YYYY-000001". Penomoran
- * direset otomatis setiap pergantian tahun (mengikuti timezone
- * Asia/Makassar pada CONFIG.TIMEZONE), karena sequence yang digunakan
- * diturunkan per tahun dari CONFIG.SEQUENCES.REPORT (mis. "REPORT_2026").
+ * Membuat nomor laporan publik dengan format "SRP-YYYY-000001", menggunakan
+ * SATU sequence global monoton CONFIG.SEQUENCES.REPORT — sequence ini TIDAK
+ * PERNAH direset per tahun. Tahun (YYYY) yang muncul pada nomor laporan
+ * hanya bersifat tampilan (display), diambil dari tahun saat ini mengikuti
+ * timezone Asia/Makassar (CONFIG.TIMEZONE); angka urut di baliknya tetap
+ * berjalan menerus lintas tahun.
  *
- * Nomor laporan ini berbeda dari report_id internal, yang dihasilkan
- * melalui generateEntityId(CONFIG.ID_PREFIXES.REPORT, CONFIG.SEQUENCES.REPORT)
- * dan tidak direset setiap tahun.
+ * Contoh urutan pemanggilan lintas pergantian tahun:
+ *   SRP-2026-000001, SRP-2026-000002, SRP-2027-000003, SRP-2027-000004, ...
+ *
+ * report_id internal (dihasilkan melalui
+ * generateEntityId(CONFIG.ID_PREFIXES.REPORT, CONFIG.SEQUENCES.REPORT))
+ * menggunakan sequence yang sama persis (CONFIG.SEQUENCES.REPORT), sehingga
+ * seluruh penomoran terkait laporan bersumber dari satu counter global yang
+ * konsisten di sheet 91_sequences.
  *
  * @return {string} Nomor laporan, mis. "SRP-2026-000001".
  * @throws {Error} Jika getNextSequence gagal (lihat getNextSequence).
  */
 function generateReportNumber() {
   var year = Utilities.formatDate(new Date(), CONFIG.TIMEZONE, 'yyyy');
-  var yearlySequenceKey = CONFIG.SEQUENCES.REPORT + '_' + year;
-  var nextValue = getNextSequence(yearlySequenceKey);
+  var nextValue = getNextSequence(CONFIG.SEQUENCES.REPORT);
   return 'SRP-' + year + '-' + padNumber(nextValue, 6);
 }

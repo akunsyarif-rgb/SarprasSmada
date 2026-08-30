@@ -21,11 +21,28 @@ Status: **Selesai**
 - Implementasi `UtilityService.gs` — fungsi bantu lintas domain (format timestamp, validasi umum, struktur response standar).
 - **Belum termasuk**: pembuatan sheet aktual pada Google Spreadsheet (`90_settings`, `91_sequences`, dsb.) — ini merupakan langkah operasional yang dilakukan di sisi Google Sheets, bukan bagian dari source code.
 
+## PHASE 2.5 — Core Backend Validation
+
+Status: **Selesai**
+
+Validation gate sebelum melanjutkan ke PHASE 3, mengoreksi temuan pada implementasi PHASE 2:
+
+- Koreksi `SequenceService.generateReportNumber()` — sebelumnya menurunkan sequence key per tahun (mis. `REPORT_2026`), diperbaiki menjadi satu sequence global monoton `CONFIG.SEQUENCES.REPORT` yang tidak pernah direset; tahun pada `report_number` kini murni tampilan.
+- Penambahan `CONFIG.SEQUENCES.CORE_TEST` dan `CONFIG.ID_PREFIXES.CORE_TEST` khusus kebutuhan smoke test, terpisah dari sequence produksi.
+- Dokumentasi eksplisit Aturan Akses Database pada `docs/ARCHITECTURE.md` (bagian 4) dan `apps-script/README.md`, termasuk penjelasan pengecualian `SequenceService` untuk menjaga operasi atomik.
+- Penyusunan `docs/DATABASE_SETUP.md` — panduan operasional pembuatan spreadsheet, penyimpanan `SPREADSHEET_ID` di Script Properties, daftar seluruh sheet dan header, serta nilai awal sequence.
+- Penyusunan `apps-script/tests/CoreSmokeTest.gs` — smoke test manual untuk Config, DatabaseService, dan SequenceService.
+- Koreksi contoh format `report_number` dan deskripsi `91_sequences` pada `docs/DATABASE_SCHEMA.md` agar konsisten dengan desain sequence yang telah dikoreksi.
+
 ## PHASE 3 — Master Data
 
-- Implementasi layanan CRUD untuk data pengguna (`01_users`).
-- Implementasi layanan CRUD untuk lokasi (`02_locations`), kategori (`03_categories`), fasilitas (`04_facilities`), dan owner (`05_owners`).
-- Validasi relasi antar data master (mis. fasilitas harus merujuk pada lokasi dan kategori yang valid).
+Status: **Selesai**
+
+- Implementasi layanan CRUD untuk data pengguna (`01_users`) — `apps-script/users/UserService.gs`.
+- Implementasi layanan CRUD untuk lokasi hierarkis (`02_locations`), kategori (`03_categories`), fasilitas (`04_facilities`), dan owner (`05_owners`) — `apps-script/master-data/`.
+- Validasi relasi antar data master (mis. fasilitas harus merujuk kategori yang valid dan aktif; lokasi anak tidak boleh membentuk circular hierarchy terhadap induknya).
+- Soft delete (`is_active`) untuk seluruh entitas Master Data — tidak ada hard delete.
+- Penyusunan `apps-script/tests/MasterDataSmokeTest.gs` — smoke test manual untuk seluruh domain Master Data.
 
 ## PHASE 4 — Report Engine
 
