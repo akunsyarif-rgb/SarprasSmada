@@ -64,7 +64,7 @@ SarprasSmada/
 
 ## Status Pengembangan Saat Ini
 
-Repository berada pada tahap **PHASE 3.75 — Legacy-Compatible Repository Reconciliation** (lihat [`docs/DEVELOPMENT_ROADMAP.md`](docs/DEVELOPMENT_ROADMAP.md)).
+Repository berada pada tahap **PHASE 4 — Legacy-Compatible Report Engine** (lihat [`docs/DEVELOPMENT_ROADMAP.md`](docs/DEVELOPMENT_ROADMAP.md)).
 
 Yang sudah selesai:
 
@@ -74,5 +74,6 @@ Yang sudah selesai:
 - **PHASE 3 — Master Data**: implementasi domain Users (`UserService.gs`) dan Master Data (`LocationService.gs` dengan struktur hierarkis, `CategoryService.gs`, `FacilityService.gs`, `OwnerService.gs`), lengkap dengan validasi, soft delete, dan smoke test (`apps-script/tests/MasterDataSmokeTest.gs`).
 - **PHASE 3.5 — Real Environment Validation**: inspeksi read-only nyata (`apps-script/tools/InspectDatabase.gs`, `DatabaseInspectorStandalone.gs`) terhadap database produksi SIGAP SARPRAS yang sudah berjalan sejak sebelum repository ini dibuat.
 - **PHASE 3.75 — Legacy-Compatible Repository Reconciliation**: schema `11_report_photos`, `12_report_history`, `13_report_comments`, `20_audit_logs`, `91_sequences` diselaraskan mengikuti struktur produksi nyata (lihat "Reconciliation Notes" di `docs/DATABASE_SCHEMA.md`); `SequenceService.gs` kini punya sequence compatibility layer (alias resolution `sequence_name`/`sequence_key`, `current_value`/`last_value`) — **tidak ada migrasi spreadsheet**, hanya repository yang diselaraskan.
+- **PHASE 4 — Legacy-Compatible Report Engine**: implementasi `apps-script/reports/` — `ReportService.gs` (Create/Retrieval/Listing/Update Report dengan validasi referensi berlapis: strict saat data baru dibuat/diubah, tanpa validasi saat membaca data legacy yang orphan), `ReportWorkflowService.gs` (transisi status sesuai `docs/WORKFLOW.md`), `ReportHistoryService.gs` (riwayat perubahan ke `12_report_history`). Lengkap dengan smoke test (`apps-script/tests/ReportEngineSmokeTest.gs`). **Tidak termasuk**: perhitungan `system_priority` otomatis (OPEN DESIGN DECISION — belum ada algoritma kanonik), Photo/Comment Engine, otorisasi berbasis peran, dan audit log — seluruhnya dijadwalkan PHASE 5.
 
-**Report Engine dan Audit belum diimplementasikan** — folder `reports/` dan `audit/` masih berupa placeholder. Frontend aplikasi juga belum dikembangkan. Detail lengkap fase pengembangan berikutnya dapat dilihat pada dokumen roadmap.
+**Audit belum diimplementasikan** — folder `audit/` masih berupa placeholder. Frontend aplikasi juga belum dikembangkan. Detail lengkap fase pengembangan berikutnya dapat dilihat pada dokumen roadmap.

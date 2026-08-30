@@ -49,6 +49,7 @@ Transisi mundur (mis. `IN_PROGRESS → VERIFIED`) atau transisi ke status yang s
 
 ## Catatan Implementasi
 
-- Validasi transisi status merupakan tanggung jawab **Workflow** pada domain `reports` (lihat `docs/ARCHITECTURE.md`), bukan tanggung jawab lapisan frontend maupun `DatabaseService`.
-- Setiap penolakan transisi ilegal harus menghasilkan pesan kesalahan yang jelas, dan aktivitas percobaan transisi ilegal sebaiknya turut tercatat untuk keperluan audit.
-- Aturan otorisasi terkait siapa yang berhak memicu suatu transisi (mis. hanya owner terkait yang dapat mengubah status ke `IN_PROGRESS`) akan didetailkan pada tahap pengembangan **PHASE 5 — Workflow & Authorization** (lihat `docs/DEVELOPMENT_ROADMAP.md`).
+- Validasi transisi status merupakan tanggung jawab **Workflow** pada domain `reports` (lihat `docs/ARCHITECTURE.md`), bukan tanggung jawab lapisan frontend maupun `DatabaseService`. Diimplementasikan pada **PHASE 4** sebagai `apps-script/reports/ReportWorkflowService.gs` (`changeReportStatus()`), memakai `CONFIG.REPORT_STATUS` (`apps-script/core/Config.gs`) sebagai daftar status kanonik.
+- Setiap penolakan transisi ilegal menghasilkan pesan kesalahan eksplisit (menyebutkan status asal, status tujuan, dan daftar transisi yang diperbolehkan). Pencatatan aktivitas percobaan transisi ilegal ke `20_audit_logs` untuk keperluan audit **belum diimplementasikan** — `audit/` masih placeholder, dijadwalkan PHASE 5.
+- Setiap transisi yang BERHASIL dicatat ke `12_report_history` (action `STATUS_CHANGE`) oleh `ReportHistoryService.gs`, sudah berjalan sejak PHASE 4.
+- Aturan otorisasi terkait siapa yang berhak memicu suatu transisi (mis. hanya owner terkait yang dapat mengubah status ke `IN_PROGRESS`) akan didetailkan pada tahap pengembangan **PHASE 5 — Workflow & Authorization** (lihat `docs/DEVELOPMENT_ROADMAP.md`) — PHASE 4 hanya memvalidasi legalitas urutan transisi, bukan hak akses pemanggil.

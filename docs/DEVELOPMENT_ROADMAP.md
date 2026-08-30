@@ -44,19 +44,29 @@ Status: **Selesai**
 - Soft delete (`is_active`) untuk seluruh entitas Master Data — tidak ada hard delete.
 - Penyusunan `apps-script/tests/MasterDataSmokeTest.gs` — smoke test manual untuk seluruh domain Master Data.
 
-## PHASE 4 — Report Engine
+## PHASE 3.75 — Legacy-Compatible Repository Reconciliation
 
-- Implementasi pembuatan laporan baru (`Create Report`) beserta penetapan `report_number` melalui `SequenceService`.
-- Implementasi validasi data laporan (`Report Validation`).
-- Implementasi pencatatan lampiran laporan (`11_report_photos`) dan komentar (`13_report_comments`).
-- Implementasi perhitungan `system_priority` berdasarkan kategori, `impact_level`, dan `safety_risk`.
+Status: **Selesai**
+
+- Menyelaraskan schema `11_report_photos`, `12_report_history`, `13_report_comments`, `20_audit_logs`, dan `91_sequences` mengikuti struktur database produksi nyata (temuan PHASE 3.5), tanpa migrasi spreadsheet.
+- Menambahkan sequence compatibility layer pada `SequenceService.gs` (alias resolution `sequence_name`/`sequence_key`, `current_value`/`last_value`).
+
+## PHASE 4 — Legacy-Compatible Report Engine
+
+Status: **Selesai** (cakupan diperluas dari rencana awal atas permintaan eksplisit — lihat catatan di bawah)
+
+- Implementasi `apps-script/reports/ReportService.gs` — Create Report (penetapan `report_id`/`report_number` melalui `SequenceService`), Report Retrieval, Report Listing (`listActiveReports`, `listReportsByStatus`), Report Update, dan Referential Validation berlapis (CREATE strict, READ tanpa validasi/legacy-compatible, UPDATE contextual — lihat `apps-script/reports/README.md`).
+- Implementasi `apps-script/reports/ReportWorkflowService.gs` — validasi transisi status laporan sesuai `docs/WORKFLOW.md`, termasuk penolakan transisi ilegal (`changeReportStatus`).
+- Implementasi `apps-script/reports/ReportHistoryService.gs` — pencatatan riwayat perubahan laporan (`12_report_history`), dipanggil otomatis oleh `ReportService`/`ReportWorkflowService` (action `CREATE`/`UPDATE`/`STATUS_CHANGE`/`DEACTIVATE`).
+- Penyusunan `apps-script/tests/ReportEngineSmokeTest.gs` — smoke test manual untuk seluruh fungsi di atas, termasuk skenario legacy orphan compatibility.
+- **Cakupan yang SENGAJA DITUNDA** (lihat laporan PHASE 4 untuk detail): perhitungan `system_priority` otomatis (belum ada algoritma kanonik yang ditemukan — OPEN DESIGN DECISION), pencatatan lampiran laporan (`11_report_photos`) dan komentar (`13_report_comments`) — schema sudah siap sejak PHASE 3.75, service belum diimplementasikan, otorisasi berbasis peran, dan integrasi audit log (`20_audit_logs`) — seluruhnya tetap dijadwalkan PHASE 5 sesuai rencana awal, KECUALI validasi transisi status dan pencatatan riwayat (`12_report_history`) yang aslinya direncanakan PHASE 5 namun diminta dan diselesaikan lebih awal pada PHASE 4 ini.
 
 ## PHASE 5 — Workflow & Authorization
 
-- Implementasi validasi transisi status laporan sesuai `docs/WORKFLOW.md`, termasuk penolakan transisi ilegal.
-- Implementasi pencatatan riwayat perubahan laporan (`12_report_history`).
-- Implementasi otorisasi berbasis peran (role) untuk setiap aksi pada laporan (mis. siapa yang berhak memverifikasi, menugaskan, atau menutup laporan).
-- Implementasi pencatatan audit log (`20_audit_logs`) untuk seluruh aktivitas penting di sistem.
+- Implementasi otorisasi berbasis peran (role) untuk setiap aksi pada laporan (mis. siapa yang berhak memverifikasi, menugaskan, atau menutup laporan) — `ReportWorkflowService.changeReportStatus()` pada PHASE 4 baru memvalidasi legalitas URUTAN transisi, belum memeriksa hak akses pemanggil.
+- Implementasi pencatatan audit log (`20_audit_logs`) untuk seluruh aktivitas penting di sistem — `AuditService` belum ada; titik integrasi yang diperlukan sudah diidentifikasi pada laporan PHASE 4 (createReport, updateReport, changeReportStatus, deactivateReport).
+- Implementasi service lampiran laporan (`11_report_photos`) dan komentar (`13_report_comments`) — di luar scope PHASE 4 secara eksplisit.
+- Implementasi perhitungan `system_priority` berdasarkan kategori, `impact_level`, dan `safety_risk`, setelah algoritma kanonik dikonfirmasi (lihat OPEN DESIGN DECISIONS pada laporan PHASE 4).
 
 ## PHASE 6 — Testing
 

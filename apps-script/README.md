@@ -4,12 +4,13 @@ Direktori ini berisi source code backend SIGAP SARPRAS yang berjalan di atas Goo
 
 ## Status
 
-**PHASE 3.75 — Legacy-Compatible Repository Reconciliation selesai** (di atas PHASE 3 — Master Data, PHASE 3.5 — Real Environment Validation, dan PHASE 2/2.5 yang juga sudah selesai). Schema `11_report_photos`, `12_report_history`, `13_report_comments`, `20_audit_logs`, `91_sequences` kini mengikuti struktur database produksi nyata (lihat `docs/DATABASE_SCHEMA.md` bagian "Reconciliation Notes") — tidak ada migrasi spreadsheet, hanya repository yang diselaraskan.
+**PHASE 4 — Legacy-Compatible Report Engine selesai** (di atas PHASE 3.75 — Legacy-Compatible Repository Reconciliation, PHASE 3 — Master Data, PHASE 3.5 — Real Environment Validation, dan PHASE 2/2.5 yang juga sudah selesai). Report Engine (`apps-script/reports/`) kini fungsional: Create/Retrieval/Listing/Update/Workflow/History laporan, dengan validasi referensi berlapis yang tetap kompatibel terhadap data legacy yang sudah orphan (lihat `apps-script/reports/README.md`).
 
 - `core/` — `Config.gs`, `DatabaseService.gs`, `SequenceService.gs`, `UtilityService.gs`: fungsional, telah divalidasi (lihat `apps-script/tests/CoreSmokeTest.gs`).
 - `users/` — `UserService.gs`: fungsional.
 - `master-data/` — `LocationService.gs`, `CategoryService.gs`, `FacilityService.gs`, `OwnerService.gs`: fungsional (lihat `apps-script/tests/MasterDataSmokeTest.gs`).
-- `reports/`, `audit/` — **masih placeholder** (belum ada implementasi logika bisnis), dijadwalkan pada PHASE 4 dan PHASE 5.
+- `reports/` — `ReportService.gs`, `ReportWorkflowService.gs`, `ReportHistoryService.gs`: fungsional (lihat `apps-script/tests/ReportEngineSmokeTest.gs`). Photo/Comment Engine dan Authorization **belum diimplementasikan** (di luar scope PHASE 4, dijadwalkan PHASE 5).
+- `audit/` — **masih placeholder** (belum ada implementasi), dijadwalkan pada PHASE 5.
 - `tools/` — **one-time infrastructure utility** (bukan domain service): `InspectDatabase.gs` (READ-ONLY, discovery database yang sudah ada) dan `SetupDatabase.gs` (membuat sheet/header/sequence awal). Lihat `docs/DATABASE_SETUP.md`.
 
 ### Persiapan Sebelum Menjalankan

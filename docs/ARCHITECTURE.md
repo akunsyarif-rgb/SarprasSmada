@@ -49,13 +49,12 @@ Data referensi yang digunakan oleh domain pelaporan.
 
 ### REPORT MANAGEMENT (`apps-script/reports/`)
 
-Domain inti sistem, mencakup:
+Domain inti sistem. Diimplementasikan pada **PHASE 4 — Legacy-Compatible Report Engine**, terbagi tiga file sesuai tanggung jawabnya:
 
-- **Create Report** — pembuatan laporan baru beserta penetapan ID dan nomor laporan unik.
-- **Report Validation** — validasi kelengkapan dan konsistensi data laporan sebelum disimpan atau diubah.
-- **Workflow** — pengendalian transisi status laporan sesuai aturan yang telah ditetapkan (lihat `docs/WORKFLOW.md`). Transisi status ilegal wajib ditolak pada lapisan ini.
-- **Authorization** — pemeriksaan hak akses, memastikan hanya pengguna dengan peran/kewenangan yang sesuai yang dapat melakukan suatu aksi (mis. hanya verifikator yang dapat mengubah status ke `VERIFIED`).
-- **History** — pencatatan riwayat perubahan pada setiap laporan (`12_report_history`), terpisah dari audit log sistem secara umum.
+- **Create Report, Report Validation, Report Retrieval/Listing/Update** (`ReportService.gs`) — pembuatan laporan baru beserta penetapan `report_id`/`report_number` melalui `SequenceService`; validasi kelengkapan dan konsistensi data laporan, dengan tiga tingkat berbeda untuk CREATE (strict), READ (tanpa validasi — legacy-compatible), dan UPDATE (contextual, hanya kolom yang diubah) — lihat `apps-script/reports/README.md` dan header file untuk detail.
+- **Workflow** (`ReportWorkflowService.gs`) — pengendalian transisi status laporan sesuai aturan yang telah ditetapkan (lihat `docs/WORKFLOW.md`). Transisi status ilegal wajib ditolak pada lapisan ini.
+- **History** (`ReportHistoryService.gs`) — pencatatan riwayat perubahan pada setiap laporan (`12_report_history`), terpisah dari audit log sistem secara umum. Dipanggil internal oleh `ReportService.gs`/`ReportWorkflowService.gs`.
+- **Authorization** — pemeriksaan hak akses, memastikan hanya pengguna dengan peran/kewenangan yang sesuai yang dapat melakukan suatu aksi (mis. hanya verifikator yang dapat mengubah status ke `VERIFIED`). **BELUM diimplementasikan** — dijadwalkan **PHASE 5**; `changeReportStatus()` PHASE 4 hanya memvalidasi legalitas urutan transisi, bukan hak akses pemanggil.
 
 ### AUDIT (`apps-script/audit/`)
 
