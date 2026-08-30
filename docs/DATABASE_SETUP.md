@@ -2,9 +2,26 @@
 
 Dokumen ini adalah panduan operasional (manual, dilakukan sekali oleh pengelola sistem) untuk menyiapkan Google Spreadsheet sebagai database SIGAP SARPRAS beserta konfigurasi Google Apps Script yang menyertainya.
 
-**Penting:** Panduan ini murni operasional. Tidak ada bagian dari source code (`apps-script/`) yang membuat spreadsheet atau sheet secara otomatis — pembuatan spreadsheet dan sheet dilakukan manual oleh pengelola sistem, sesuai prinsip "jangan membuat spreadsheet otomatis".
+**Penting:** Google Spreadsheet-nya sendiri (file barunya) tetap wajib dibuat **manual** oleh pengelola sistem — tidak ada source code yang membuat *Spreadsheet baru*. Namun setelah spreadsheet kosong tersebut ada dan `SPREADSHEET_ID` sudah diset, pembuatan **sheet, header, dan baris sequence awal di dalamnya** dapat diotomasi melalui `apps-script/tools/SetupDatabase.gs` — lihat "Workflow yang Direkomendasikan" di bawah.
 
 Skema lengkap tiap sheet (deskripsi kolom) ada di [`docs/DATABASE_SCHEMA.md`](DATABASE_SCHEMA.md). Dokumen ini berfokus pada **langkah setup**-nya.
+
+---
+
+## Workflow yang Direkomendasikan
+
+1. Buat Google Spreadsheet kosong (bagian 1 di bawah).
+2. Buat/buka Apps Script project yang terikat ke spreadsheet tersebut (Extensions > Apps Script).
+3. Set `SPREADSHEET_ID` pada Script Properties (bagian 3 di bawah).
+4. Upload/copy seluruh source code `apps-script/` (termasuk `core/`, `users/`, `master-data/`, `tests/`, dan `tools/`) ke project Apps Script tersebut.
+5. Jalankan `setupDatabase()` (dari `apps-script/tools/SetupDatabase.gs`) — membuat seluruh 12 sheet, menulis header sesuai `docs/DATABASE_SCHEMA.md`, dan menginisialisasi 9 baris sequence (`last_value = 0`) secara otomatis. Aman dijalankan berulang kali (lihat bagian "Setup Otomatis via SetupDatabase.gs" di bawah).
+6. Jalankan `verifyDatabaseSetup()` (file yang sama) — memverifikasi tanpa mengubah apa pun, menghasilkan laporan PASS/FAIL per sheet dan per sequence.
+7. Jalankan `runCoreSmokeTest()` (`apps-script/tests/CoreSmokeTest.gs`).
+8. Jalankan `runMasterDataSmokeTest()` (`apps-script/tests/MasterDataSmokeTest.gs`).
+
+> **Peringatan:** `SetupDatabase.gs` aman dijalankan ulang kapan saja (idempotent — tidak membuat sheet/sequence duplikat, tidak mereset sequence yang sudah punya nilai), **tetapi tidak memperbaiki schema mismatch secara otomatis**. Jika suatu sheet sudah ada dengan header yang **berbeda** dari `docs/DATABASE_SCHEMA.md`, `setupDatabase()` akan berhenti dan melempar error `SCHEMA_MISMATCH` yang menyebutkan sheet, header yang diharapkan, dan header yang sebenarnya ditemukan — perbaikan header tersebut wajib dilakukan **manual** oleh Anda, tidak ada perbaikan/migrasi otomatis.
+
+Bagian-bagian di bawah ini (1–7) tetap didokumentasikan sebagai **referensi manual** — berguna untuk memahami apa yang sebenarnya dilakukan `setupDatabase()`, atau sebagai jalan alternatif jika suatu saat perlu menyiapkan sheet secara manual tanpa menjalankan script.
 
 ---
 
@@ -45,6 +62,8 @@ Setelah ini, `Config.getSpreadsheetId()` dan `Config.getSpreadsheet()` akan dapa
 
 ## 4. Daftar Seluruh Sheet yang Wajib Dibuat
 
+*(Otomatis dilakukan oleh `setupDatabase()` — bagian ini referensi manual.)*
+
 Buat sheet-sheet berikut pada spreadsheet database (nama sheet **harus persis sama**, termasuk huruf besar/kecil dan garis bawah, karena `DatabaseService` mencari sheet berdasarkan nama):
 
 | Kelompok | Nama Sheet |
@@ -65,6 +84,8 @@ Buat sheet-sheet berikut pada spreadsheet database (nama sheet **harus persis sa
 Cara membuat sheet: klik ikon **+** di kiri bawah spreadsheet, lalu ganti nama sheet (klik dua kali pada tab nama sheet) sesuai tabel di atas.
 
 ## 5. Header Kolom Setiap Sheet
+
+*(Otomatis dilakukan oleh `setupDatabase()` — bagian ini referensi manual.)*
 
 Header wajib ditulis persis sesuai nama kolom pada [`docs/DATABASE_SCHEMA.md`](DATABASE_SCHEMA.md) — `DatabaseService` memetakan data berdasarkan nama kolom pada baris pertama (header), bukan posisi kolom. Isikan baris pertama (row 1) setiap sheet dengan header berikut, satu nama kolom per sel:
 
@@ -132,6 +153,8 @@ sequence_key  last_value  updated_at
 
 ## 6. Inisialisasi Sheet `91_sequences`
 
+*(Otomatis dilakukan oleh `setupDatabase()` — bagian ini referensi manual.)*
+
 `SequenceService` **tidak membuat baris sequence secara manual** — baris baru otomatis dibuat oleh `getNextSequence()` saat sequence tersebut pertama kali dipakai, dimulai dari nilai `1`. Namun, agar counter yang sudah dikenal sistem eksplisit terlihat sejak awal (dan memudahkan audit), disarankan menambahkan baris awal berikut secara manual dengan `last_value = 0`:
 
 | `sequence_key` | `last_value` | `updated_at` |
@@ -166,13 +189,32 @@ Baris-baris ini juga akan dibuat otomatis saat pertama kali dipakai bila belum a
 
 Jika ke depannya sequence tambahan diperlukan (mis. domain baru), tambahkan konstantanya secara konsisten pada `CONFIG.SEQUENCES` (`core/Config.gs`) dan dokumentasikan baris awalnya di tabel pada dokumen ini.
 
-## 7. Verifikasi Setup
+## 7. Setup Otomatis via SetupDatabase.gs
 
-Setelah seluruh langkah di atas selesai, jalankan `apps-script/tests/CoreSmokeTest.gs` (fungsi `runCoreSmokeTest()`) secara manual dari editor Apps Script untuk memverifikasi:
+`apps-script/tools/SetupDatabase.gs` adalah **one-time infrastructure utility** (bukan domain service, bukan bagian alur produksi) yang mengotomasi bagian 4–6 di atas. Dua fungsi yang tersedia:
 
-- Spreadsheet ID terbaca dengan benar dari Script Properties.
-- Spreadsheet dapat dibuka.
-- `SequenceService` dapat membaca/menulis ke `91_sequences` secara atomik.
-- `DatabaseService` dapat mengakses sheet lain tanpa error.
+### `setupDatabase()`
 
-Lihat hasil eksekusi pada **View > Logs** (atau `Ctrl+Enter` di editor) setelah menjalankan fungsi tersebut.
+Membuat sheet yang belum ada beserta headernya, menulis header pada sheet yang sudah ada tapi masih kosong, dan menginisialisasi baris sequence yang belum ada (`last_value = 0`). **Idempotent** — aman dijalankan berulang kali:
+
+- Sheet yang sudah ada dan headernya sudah sesuai **tidak disentuh**.
+- Sequence yang sudah ada nilainya **tidak pernah direset/diubah**.
+- Tidak pernah membuat sheet atau baris sequence duplikat.
+- **Tidak ada operasi destruktif** apa pun (tidak ada `deleteSheet`, `clear`, `clearContents`, atau penimpaan data yang sudah ada).
+
+Jika suatu sheet sudah ada dengan header yang **tidak sesuai** `docs/DATABASE_SCHEMA.md`, fungsi ini **tidak memperbaikinya secara otomatis** — ia berhenti dan melempar error `SCHEMA_MISMATCH` yang menyebutkan nama sheet, header yang diharapkan, dan header yang sebenarnya ditemukan. Perbaikan wajib dilakukan manual oleh Anda di spreadsheet, lalu jalankan ulang `setupDatabase()`.
+
+Cara menjalankan: di editor Apps Script, pilih fungsi `setupDatabase` pada dropdown lalu klik **Run**. Lihat hasilnya di **View > Logs** (atau `Ctrl+Enter`) — akan tercetak ringkasan sheet/sequence yang dibuat vs. yang sudah terverifikasi, dan hasil yang sama juga dikembalikan sebagai objek (`success`, `status`, `spreadsheet_id`, `sheets_created`, `sheets_verified`, `sequences_created`, `sequences_verified`).
+
+### `verifyDatabaseSetup()`
+
+Read-only — **tidak mengubah apa pun**. Memeriksa keberadaan dan kesesuaian header seluruh 12 sheet serta keberadaan seluruh 9 baris sequence, lalu mencetak laporan PASS/FAIL per item ke Logger (format tabel `NAMA_SHEET  PASS/FAIL`). Gunakan ini untuk memeriksa status database kapan saja tanpa risiko mengubah apa pun — termasuk sebagai pemeriksaan rutin setelah setup awal.
+
+## 8. Verifikasi Akhir dengan Smoke Test
+
+Setelah `setupDatabase()` dan `verifyDatabaseSetup()` menunjukkan hasil PASS, jalankan kedua smoke test berikut secara manual dari editor Apps Script untuk memverifikasi domain Core Backend dan Master Data:
+
+1. `runCoreSmokeTest()` (`apps-script/tests/CoreSmokeTest.gs`) — memverifikasi `getSpreadsheetId()`, `getSpreadsheet()`, akses sheet via `DatabaseService`, dan `SequenceService` (increment, `generateEntityId()`, `generateReportNumber()`).
+2. `runMasterDataSmokeTest()` (`apps-script/tests/MasterDataSmokeTest.gs`) — memverifikasi create/get/update/list/deactivate, validasi gagal, deteksi duplikasi, hierarki lokasi, dan validasi facility-category pada data bertanda `TEST_`.
+
+Lihat hasil eksekusi pada **View > Logs** (atau `Ctrl+Enter` di editor) setelah menjalankan masing-masing fungsi.
