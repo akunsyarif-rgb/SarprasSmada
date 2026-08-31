@@ -45,26 +45,33 @@ Detail lengkap arsitektur sistem dapat dilihat pada [`docs/ARCHITECTURE.md`](doc
 ```
 SarprasSmada/
 ├── README.md                      Dokumen ini
-├── docs/                          Dokumentasi arsitektur, workflow, skema data, dan roadmap
+├── package.json                   Devtool deployment (clasp) — lihat docs/DEPLOYMENT.md
+├── .clasp.json.example            Template konfigurasi clasp (rootDir apps-script/, tanpa Script ID nyata)
+├── .claspignore                   Mengecualikan tools/, tests/, *.md dari clasp push
+├── docs/                          Dokumentasi arsitektur, workflow, skema data, roadmap, deployment
 │   ├── ARCHITECTURE.md
 │   ├── WORKFLOW.md
 │   ├── DATABASE_SCHEMA.md
-│   └── DEVELOPMENT_ROADMAP.md
+│   ├── DEVELOPMENT_ROADMAP.md
+│   └── DEPLOYMENT.md
 ├── apps-script/                   Source code backend Google Apps Script
 │   ├── README.md
+│   ├── appsscript.json            Manifest Web App
 │   ├── core/                      Konfigurasi, akses database, sequence, utilitas
 │   ├── users/                     Domain pengguna
 │   ├── master-data/               Domain data master (lokasi, kategori, fasilitas, owner)
 │   ├── reports/                   Domain pelaporan & workflow
-│   ├── audit/                     Domain audit log
-│   └── tests/                     Pengujian backend
-├── frontend/                      Placeholder aplikasi frontend (belum dikembangkan)
+│   ├── api/                       Entry point Web App (doGet, MVP) — lihat apps-script/api/README.md
+│   ├── audit/                     Domain audit log (belum diimplementasikan)
+│   ├── tools/                     Utility infrastruktur one-time (TIDAK ikut deployment MVP)
+│   └── tests/                     Pengujian backend (TIDAK ikut deployment MVP)
+├── frontend/                      Placeholder aplikasi frontend final (belum dikembangkan)
 └── .gitignore
 ```
 
 ## Status Pengembangan Saat Ini
 
-Repository berada pada tahap **PHASE 4.5 — MVP Usability** (lihat [`docs/DEVELOPMENT_ROADMAP.md`](docs/DEVELOPMENT_ROADMAP.md)). Sistem sudah dapat **dibuka dan diuji pengguna nyata** lewat URL Web App (lihat [`apps-script/api/README.md`](apps-script/api/README.md)), bukan hanya berfungsi lewat editor Apps Script.
+Repository berada pada tahap **PHASE 4.5 — MVP Usability** (lihat [`docs/DEVELOPMENT_ROADMAP.md`](docs/DEVELOPMENT_ROADMAP.md)). Sistem sudah dapat **dibuka dan diuji pengguna nyata** lewat URL Web App (lihat [`apps-script/api/README.md`](apps-script/api/README.md)). Cara push source ke project Apps Script tanpa copy-paste manual (`clasp`) ada di [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 Yang sudah selesai:
 

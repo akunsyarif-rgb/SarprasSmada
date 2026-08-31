@@ -16,6 +16,18 @@ Folder ini **BUKAN** domain bisnis dan **BUKAN** pengecualian baru pada aturan `
 
 ## Deployment (dilakukan MANUAL oleh operator, TIDAK dilakukan otomatis)
 
+Untuk memindahkan source `apps-script/` ke project Apps Script **BARU**
+("SIGAP SARPRAS - MVP Web App", TERPISAH dari project
+"SIGAP SARPRAS - Database Inspector" yang read-only) memakai `clasp` (tanpa
+copy-paste manual), lihat **`docs/DEPLOYMENT.md`** — mencakup audit
+dependency runtime, `.claspignore` (mengecualikan `tools/`/`tests/`/`*.md`),
+dan urutan perintah persis (`npm install` → `clasp login` → isi
+`.clasp.json` dengan Script ID project BARU → `clasp status` untuk
+verifikasi → `clasp push`).
+
+Langkah SETELAH source ter-push (berlaku untuk kedua cara, clasp maupun
+copy-paste manual):
+
 1. Pastikan `apps-script/appsscript.json` sudah ada di project Apps Script (mendefinisikan `webapp.executeAs: "USER_ACCESSING"` — WAJIB agar `Session.getActiveUser()` dapat mengidentifikasi pemanggil individual, bukan pemilik script).
 2. **Periksa `webapp.access`** pada `appsscript.json` sebelum deploy — nilai default repository ini adalah `"DOMAIN"` (hanya akun dalam Google Workspace yang sama, mis. akun sekolah). Sesuaikan dengan kebijakan sekolah bila berbeda (mis. `"ANYONE_ANONYMOUS"` TIDAK direkomendasikan karena `Session.getActiveUser()` tidak dapat mengidentifikasi pengguna anonim — `getCurrentUserContext_()` akan selalu gagal).
 3. Deploy sebagai **Web App** (Deploy > New deployment > Web app) dari editor Apps Script.

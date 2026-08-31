@@ -1,0 +1,16 @@
+{
+  "name": "sigap-sarpras",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Deployment tooling for SIGAP SARPRAS MVP Web App (Google Apps Script via clasp). No application dependencies — the runtime is apps-script/, plain Apps Script.",
+  "scripts": {
+    "clasp:login": "clasp login",
+    "clasp:status": "clasp status",
+    "clasp:push-dry-run": "clasp push --dry-run",
+    "clasp:push": "clasp push",
+    "clasp:open": "clasp open-webapp"
+  },
+  "devDependencies": {
+    "@google/clasp": "^2.4.2"
+  }
+}

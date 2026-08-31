@@ -1,0 +1,25 @@
+# .claspignore — controls what `clasp push` uploads from apps-script/
+# (rootDir, see .clasp.json.example) into the Apps Script project.
+#
+# Patterns are matched relative to rootDir (apps-script/), gitignore-style.
+# Verify the actual push set with `clasp status` before ever running
+# `clasp push` — see docs/DEPLOYMENT.md.
+#
+# EXCLUDED — one-time infrastructure utilities (SetupDatabase.gs writes to
+# the spreadsheet structure, InspectDatabase.gs/DatabaseInspectorStandalone.gs
+# belong to the separate, read-only "SIGAP SARPRAS - Database Inspector"
+# project and must never ship inside the MVP Web App). Nothing under
+# core/, users/, master-data/, reports/, or api/ depends on this folder —
+# confirmed by dependency audit, see docs/DEPLOYMENT.md.
+tools/**
+
+# EXCLUDED — manual smoke tests (Logger-based, run from the Apps Script
+# editor by a developer). Several of them write TEST_-tagged data or bump
+# production sequences when run — they must never be reachable from the
+# deployed Web App. Nothing under core/, users/, master-data/, reports/,
+# or api/ depends on this folder.
+tests/**
+
+# EXCLUDED — documentation. Not a valid Apps Script source file type
+# (.gs/.html/.json), and not needed at runtime.
+**/*.md
