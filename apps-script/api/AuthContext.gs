@@ -33,9 +33,18 @@
 /**
  * Peran yang diperbolehkan memicu perubahan status/penonaktifan laporan
  * (lihat catatan OPEN DESIGN DECISION di header file ini).
+ *
+ * Sengaja berupa FUNGSI (bukan top-level var) agar tidak bergantung pada
+ * urutan file dimuat Google Apps Script (semua file digabung dan kode
+ * top-level dijalankan sesuai urutan pada project — jika ini top-level var
+ * dan file ini dimuat sebelum core/Config.gs, CONFIG belum terdefinisi).
+ *
+ * @return {Array<string>} Daftar CONFIG.ROLES yang diizinkan.
  * @private
  */
-var API_WORKFLOW_ALLOWED_ROLES_ = [CONFIG.ROLES.VERIFIKATOR, CONFIG.ROLES.OWNER, CONFIG.ROLES.ADMIN];
+function getWorkflowAllowedRoles_() {
+  return [CONFIG.ROLES.VERIFIKATOR, CONFIG.ROLES.OWNER, CONFIG.ROLES.ADMIN];
+}
 
 /**
  * Mengidentifikasi pengguna SIGAP SARPRAS yang sedang memanggil Web App,

@@ -17,7 +17,7 @@
  * Dependency:
  * - core/Config.gs (CONFIG.REPORT_STATUS)
  * - apps-script/api/AuthContext.gs (getCurrentUserContext_, requireRole_,
- *   API_WORKFLOW_ALLOWED_ROLES_)
+ *   getWorkflowAllowedRoles_)
  * - apps-script/api/ApiUtil.gs (apiRun_)
  * - apps-script/reports/ReportService.gs (createReport, getReportById,
  *   listActiveReports, listReportsByStatus, updateReport, deactivateReport)
@@ -40,7 +40,7 @@ function apiGetCurrentUser() {
       full_name: user.full_name,
       email: user.email,
       role: user.role,
-      can_manage_workflow: API_WORKFLOW_ALLOWED_ROLES_.indexOf(user.role) !== -1
+      can_manage_workflow: getWorkflowAllowedRoles_().indexOf(user.role) !== -1
     };
   });
 }
@@ -142,7 +142,7 @@ function apiUpdateReport(reportId, updates) {
 function apiChangeReportStatus(reportId, newStatus, notes) {
   return apiRun_(function () {
     var user = getCurrentUserContext_();
-    requireRole_(user, API_WORKFLOW_ALLOWED_ROLES_);
+    requireRole_(user, getWorkflowAllowedRoles_());
     return changeReportStatus(reportId, newStatus, { performed_by: user.user_id, notes: notes });
   });
 }
@@ -156,7 +156,7 @@ function apiChangeReportStatus(reportId, newStatus, notes) {
 function apiDeactivateReport(reportId) {
   return apiRun_(function () {
     var user = getCurrentUserContext_();
-    requireRole_(user, API_WORKFLOW_ALLOWED_ROLES_);
+    requireRole_(user, getWorkflowAllowedRoles_());
     return deactivateReport(reportId, user.user_id);
   });
 }
