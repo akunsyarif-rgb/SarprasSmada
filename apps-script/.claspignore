@@ -1,0 +1,10 @@
+# clasp push hanya boleh menyentuh file .gs + appsscript.json — TIDAK ADA
+# README.md, tests/tools yang bukan .gs, atau berkas dokumentasi lain yang
+# ikut terdorong ke project Apps Script. Pola relatif terhadap "rootDir"
+# (apps-script/, lihat .clasp.json.example di root repo), BUKAN root repo.
+#
+# clasp membaca .claspignore ini dari dalam rootDir — letaknya WAJIB di
+# apps-script/.claspignore, bukan di root repo.
+**/**
+!**/*.gs
+!appsscript.json

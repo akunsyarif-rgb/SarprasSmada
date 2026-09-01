@@ -1,31 +1,79 @@
-# API / Web App Entry Point (MVP)
+# API / Web App Entry Point
 
-Folder ini berisi lapisan **entry point** Web App SIGAP SARPRAS (lihat `docs/ARCHITECTURE.md`: "Google Apps Script — lapisan entry point ... yang menerima permintaan dan meneruskannya ke Service Layer"). Ditambahkan sebagai **PHASE 4.5 — MVP Usability**, di luar urutan roadmap awal (`docs/DEVELOPMENT_ROADMAP.md`), atas prioritas eksplisit: sistem harus benar-benar dapat dibuka dan diuji oleh pengguna nyata sesegera mungkin, bukan hanya berfungsi secara teoritis lewat editor Apps Script.
+Folder ini berisi lapisan **entry point** Web App SIGAP SARPRAS (lihat
+`docs/ARCHITECTURE.md`: "Google Apps Script — lapisan entry point ... yang
+menerima permintaan dan meneruskannya ke Service Layer").
+
+## Perubahan arsitektur (menggantikan PHASE 4.5 — MVP Usability)
+
+Versi sebelumnya folder ini menyajikan `api/Index.html` — sebuah halaman uji
+coba minimal yang disajikan langsung oleh `doGet()` lewat `HtmlService`, dan
+client-nya memanggil backend lewat `google.script.run`. Pola itu **hanya bisa
+bekerja ketika HTML disajikan oleh project Apps Script yang sama** — begitu
+frontend dipindah ke hosting terpisah (`frontend/`, lihat README repo utama),
+`google.script.run` tidak lagi bisa dipakai sama sekali.
+
+Folder ini sekarang berisi **JSON API bertoken** (`doGet`/`doPost`), dipanggil
+dari `frontend/` lewat `fetch()`. `api/Index.html` sudah **dihapus** —
+lihat riwayat commit bila perlu merujuknya.
 
 ## Isi
 
-- **`App.gs`** — `doGet()`, satu-satunya Web App entry point. Menyajikan `Index.html`.
-- **`Index.html`** — **halaman uji coba MINIMAL** (vanilla HTML/CSS/JS, tanpa framework/CDN eksternal): identitas pengguna aktif, form buat laporan, daftar laporan, kontrol ubah status (khusus peran tertentu). **BUKAN frontend final PHASE 7** — lihat `frontend/README.md`.
-- **`AuthContext.gs`** — mengidentifikasi pengguna dari sesi Google aktif (`Session.getActiveUser()`) lalu mencocokkannya ke `01_users` (`getUserByEmail`, di `apps-script/users/UserService.gs`). BUKAN autentikasi (tidak ada password) — memanfaatkan sesi Google Workspace yang sudah ada. Juga berisi `requireRole_()`, pemeriksaan peran MINIMAL (lihat catatan OPEN DESIGN DECISION di headernya).
-- **`ApiUtil.gs`** — `apiRun_()`, pembungkus generik agar setiap fungsi API mengembalikan `{success, data, error}` yang konsisten (memakai `core/UtilityService.gs`).
-- **`ReportApi.gs`**, **`MasterDataApi.gs`** — fungsi publik yang dipanggil dari `Index.html` lewat `google.script.run`. TIDAK ada logika bisnis di sini — hanya identifikasi pemanggil + pass-through ke Service Layer (`apps-script/reports/`, `apps-script/master-data/`) + pembungkusan response.
+- **`App.gs`** — `doGet()`/`doPost()`, satu-satunya Web App entry point.
+  Memeriksa token API statis (`checkToken_()`, lihat `core/Config.gs`
+  `getApiToken()`), lalu meneruskan ke `route*Action_()` berdasarkan
+  parameter `action`.
+- **`AuthContext.gs`** — mengidentifikasi pengguna dari **token sesi**
+  (`requireSession_()`, lihat `apps-script/auth/AuthService.gs`
+  `getSessionUser()`) — BUKAN lagi dari `Session.getActiveUser()`. Juga
+  berisi `requireRole_()`, pemeriksaan peran MINIMAL (lihat catatan OPEN
+  DESIGN DECISION di headernya).
+- **`ApiUtil.gs`** — `apiRun_()`, pembungkus generik agar setiap fungsi API
+  mengembalikan `{success, data, error}` yang konsisten (memakai
+  `core/UtilityService.gs`).
+- **`AuthApi.gs`** — login/logout/ganti password/set password (admin).
+- **`UserApi.gs`** — CRUD data pengguna (ADMIN saja).
+- **`ReportApi.gs`**, **`MasterDataApi.gs`** — fungsi publik untuk laporan
+  dan data master (lokasi/kategori/fasilitas/owner). TIDAK ada logika bisnis
+  di sini — hanya identifikasi pemanggil + pass-through ke Service Layer
+  (`apps-script/reports/`, `apps-script/master-data/`) + pembungkusan
+  response.
+
+## Dua lapis token — jangan tertukar
+
+1. **Token API statis** (`token` pada setiap request, GET maupun POST) —
+   Script Property `API_TOKEN`. Gerbang pertama, diperiksa sebelum action
+   apa pun diproses. Bukan autentikasi pengguna.
+2. **Token sesi** (`sessionToken` pada body/query tiap action, kecuali
+   `status`/`login`) — hasil `AuthService.login()`, mengidentifikasi
+   pengguna yang sedang login. Ini yang sesungguhnya menentukan hak akses.
 
 ## Aturan Akses Database — tetap dipatuhi
 
-Folder ini **BUKAN** domain bisnis dan **BUKAN** pengecualian baru pada aturan `docs/ARCHITECTURE.md` bagian 4. Tidak ada satu pun fungsi di sini yang memanggil `SpreadsheetApp`/`getSpreadsheet()`/`DatabaseService` langsung — seluruhnya hanya memanggil fungsi Service Layer domain yang sudah ada (`createReport`, `getUserByEmail`, `listActiveLocations`, dst.), persis seperti yang akan dilakukan frontend PHASE 7 nanti.
+Folder ini **BUKAN** domain bisnis dan **BUKAN** pengecualian baru pada
+aturan `docs/ARCHITECTURE.md` bagian 4. Tidak ada satu pun fungsi di sini
+yang memanggil `SpreadsheetApp`/`getSpreadsheet()`/`DatabaseService`
+langsung — seluruhnya hanya memanggil fungsi Service Layer domain yang sudah
+ada.
 
-## Deployment (dilakukan MANUAL oleh operator, TIDAK dilakukan otomatis)
+## Deployment
 
-1. Pastikan `apps-script/appsscript.json` sudah ada di project Apps Script (mendefinisikan `webapp.executeAs: "USER_ACCESSING"` — WAJIB agar `Session.getActiveUser()` dapat mengidentifikasi pemanggil individual, bukan pemilik script).
-2. **Periksa `webapp.access`** pada `appsscript.json` sebelum deploy — nilai default repository ini adalah `"DOMAIN"` (hanya akun dalam Google Workspace yang sama, mis. akun sekolah). Sesuaikan dengan kebijakan sekolah bila berbeda (mis. `"ANYONE_ANONYMOUS"` TIDAK direkomendasikan karena `Session.getActiveUser()` tidak dapat mengidentifikasi pengguna anonim — `getCurrentUserContext_()` akan selalu gagal).
-3. Deploy sebagai **Web App** (Deploy > New deployment > Web app) dari editor Apps Script.
-4. Pengguna yang mengakses URL Web App WAJIB sudah terdaftar aktif di `01_users` (lihat `apps-script/users/README.md`) dengan email yang SAMA PERSIS dengan akun Google yang dipakai mengakses — tidak ada pendaftaran mandiri (self-service) pada MVP ini.
-5. Peran `VERIFIKATOR`/`OWNER`/`ADMIN` diperlukan agar kontrol "Ubah Status" muncul dan berfungsi di halaman.
+Lihat `docs/GAS_CLASP_DEPLOY.md` (jalur utama, lewat `clasp`) atau
+`docs/GAS_MANUAL_DEPLOY.md` (jalur tanpa command line — **sudah usang**,
+lihat catatan deprecation di berkas tersebut).
 
-## Yang SENGAJA belum termasuk (lihat laporan MVP)
+**`webapp.access`/`webapp.executeAs`** pada `appsscript.json` diubah menjadi
+`"ANYONE_ANONYMOUS"`/`"USER_DEPLOYING"` — berbeda dari versi PHASE 4.5
+(`"DOMAIN"`/`"USER_ACCESSING"`) — karena identitas pengguna sekarang berasal
+dari token sesi (`AuthService`), bukan lagi dari sesi Google. Lihat catatan
+lengkap pada `appsscript.json` itu sendiri.
 
-- RBAC penuh per transisi status (baru aturan kasar: VERIFIKATOR/OWNER/ADMIN untuk SEMUA transisi/deaktivasi).
+## Yang SENGAJA belum termasuk
+
+- RBAC penuh per transisi status (baru aturan kasar: VERIFIKATOR/OWNER/ADMIN
+  untuk SEMUA transisi/deaktivasi laporan).
 - Photo Engine, Comment Engine.
 - Audit log integration (`AuditService` belum ada).
 - `system_priority` otomatis (belum ada algoritma kanonik).
-- Frontend final PHASE 7 (framework, desain, dsb.) — `Index.html` di sini murni test harness fungsional.
+- Rancangan visual/UX frontend final (lihat `frontend/README.md`) — frontend
+  yang ada saat ini fungsional tapi belum melalui iterasi desain.

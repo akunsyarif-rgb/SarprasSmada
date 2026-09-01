@@ -1,31 +1,34 @@
 /**
  * AuthContext.gs
  *
- * Identifikasi pengguna pemanggil Web App berdasarkan sesi Google aktif,
- * dan pemeriksaan peran (role) MINIMAL untuk aksi yang sensitif. Ini
- * BUKAN sistem autentikasi (tidak ada password/credential apa pun di
- * sini — SIGAP SARPRAS mengandalkan sesi Google Workspace yang sudah ada,
- * lihat apps-script/appsscript.json "webapp.executeAs": "USER_ACCESSING").
+ * Identifikasi pengguna pemanggil Web App berdasarkan TOKEN SESI (lihat
+ * apps-script/auth/AuthService.gs) dan pemeriksaan peran (role).
+ *
+ * ================================================================
+ * PERUBAHAN ARSITEKTUR — dari Google SSO ke token sesi
+ * ================================================================
+ * Versi sebelumnya modul ini (PHASE 4.5 — MVP Usability) mengidentifikasi
+ * pemanggil lewat `Session.getActiveUser()` (sesi Google Workspace aktif),
+ * yang HANYA bekerja ketika HTML disajikan langsung oleh Apps Script sendiri
+ * (`HtmlService`, `google.script.run`). Sejak frontend dipindah ke hosting
+ * terpisah (`frontend/`) yang memanggil Web App lewat `fetch()` cross-origin
+ * (lihat `apps-script/api/App.gs`), pengguna diidentifikasi dari TOKEN SESI
+ * yang dikirim client (hasil `AuthService.login()`), bukan lagi dari sesi
+ * Google — lihat `apps-script/auth/AuthService.gs` dan
+ * `apps-script/appsscript.json` (`webapp.executeAs`/`webapp.access`).
  *
  * ================================================================
  * OPEN DESIGN DECISION — Authorization MINIMAL, BUKAN RBAC penuh
  * ================================================================
- * MVP ini hanya menerapkan SATU aturan kasar (coarse-grained), diambil
- * langsung dari contoh yang SUDAH ADA di docs/ARCHITECTURE.md bagian 2
- * REPORT MANAGEMENT ("mis. hanya verifikator yang dapat mengubah status
- * ke VERIFIED"): perubahan status laporan (changeReportStatus) dan
- * penonaktifan laporan (deactivateReport) HANYA dapat dipicu oleh
- * pengguna berperan VERIFIKATOR, OWNER, atau ADMIN — TIDAK dibedakan
- * lebih lanjut per jenis transisi (mis. tidak ada aturan "hanya OWNER
- * terkait yang dapat mengubah ke IN_PROGRESS"), karena aturan sedetail
- * itu belum ditemukan didokumentasikan di mana pun. RBAC penuh per
- * transisi/per peran tetap dijadwalkan PHASE 5 sesuai
- * docs/WORKFLOW.md dan docs/DEVELOPMENT_ROADMAP.md.
+ * Sama seperti versi sebelumnya: perubahan status laporan (changeReportStatus)
+ * dan penonaktifan laporan (deactivateReport) HANYA dapat dipicu oleh
+ * pengguna berperan VERIFIKATOR, OWNER, atau ADMIN — TIDAK dibedakan lebih
+ * lanjut per jenis transisi. RBAC penuh per transisi/per peran tetap
+ * dijadwalkan PHASE 5 sesuai docs/WORKFLOW.md dan docs/DEVELOPMENT_ROADMAP.md.
  *
  * Dependency:
  * - core/UtilityService.gs (isEmpty)
- * - apps-script/users/UserService.gs (getUserByEmail)
- * - Google Apps Script bawaan: Session
+ * - apps-script/auth/AuthService.gs (getSessionUser)
  *
  * Referensi: docs/ARCHITECTURE.md (bagian 2, REPORT MANAGEMENT — Authorization)
  */
@@ -35,59 +38,38 @@
  * (lihat catatan OPEN DESIGN DECISION di header file ini).
  *
  * Sengaja berupa FUNGSI (bukan top-level var) agar tidak bergantung pada
- * urutan file dimuat Google Apps Script (semua file digabung dan kode
- * top-level dijalankan sesuai urutan pada project — jika ini top-level var
- * dan file ini dimuat sebelum core/Config.gs, CONFIG belum terdefinisi).
+ * urutan file dimuat Google Apps Script.
  *
  * @return {Array<string>} Daftar CONFIG.ROLES yang diizinkan.
- * @private
  */
 function getWorkflowAllowedRoles_() {
   return [CONFIG.ROLES.VERIFIKATOR, CONFIG.ROLES.OWNER, CONFIG.ROLES.ADMIN];
 }
 
 /**
- * Mengidentifikasi pengguna SIGAP SARPRAS yang sedang memanggil Web App,
- * berdasarkan email sesi Google aktif (Session.getActiveUser().getEmail()).
- * Pengguna WAJIB sudah terdaftar (01_users) dan berstatus aktif — tidak
- * ada pendaftaran otomatis/self-service di sini.
+ * Mengidentifikasi pengguna SIGAP SARPRAS pemilik suatu token sesi.
  *
- * @return {Object} Baris pengguna (01_users) milik pemanggil.
- * @throws {Error} Jika sesi Google tidak dapat diidentifikasi (mis. akses
- *   anonim/di luar domain yang diizinkan — lihat appsscript.json
- *   "webapp.access"), atau email tersebut belum terdaftar/tidak aktif
- *   pada 01_users.
+ * @param {string} token Token sesi (hasil AuthService.login()).
+ * @return {Object} Data pengguna (tersanitasi, tanpa password_hash/password_salt).
+ * @throws {Error} Jika token kosong, tidak valid, atau sudah kedaluwarsa.
  */
-function getCurrentUserContext_() {
-  var email = Session.getActiveUser().getEmail();
-  if (isEmpty(email)) {
-    throw new Error(
-      'AuthContext.getCurrentUserContext_: Tidak dapat mengidentifikasi email pengguna dari sesi Google aktif. ' +
-      'Pastikan Web App diakses dalam keadaan login Google Workspace yang sesuai (lihat appsscript.json "webapp.access").'
-    );
+function requireSession_(token) {
+  if (isEmpty(token)) {
+    throw new Error('AuthContext.requireSession_: Token sesi wajib disertakan. Silakan login.');
   }
-
-  var user = getUserByEmail(email);
+  var user = getSessionUser(token);
   if (!user) {
-    throw new Error(
-      'AuthContext.getCurrentUserContext_: Email "' + email + '" belum terdaftar sebagai pengguna SIGAP SARPRAS. ' +
-      'Hubungi admin untuk didaftarkan terlebih dahulu.'
-    );
+    throw new Error('AuthContext.requireSession_: Sesi tidak valid atau sudah berakhir. Silakan login kembali.');
   }
-  if (user.is_active !== true) {
-    throw new Error('AuthContext.getCurrentUserContext_: Akun pengguna "' + email + '" tidak aktif.');
-  }
-
   return user;
 }
 
 /**
  * Memastikan userContext memiliki salah satu peran yang diizinkan.
  *
- * @param {Object} userContext Baris pengguna (hasil getCurrentUserContext_()).
+ * @param {Object} userContext Baris pengguna (hasil requireSession_()).
  * @param {Array<string>} allowedRoles Daftar CONFIG.ROLES yang diizinkan.
  * @throws {Error} Jika peran pengguna tidak termasuk allowedRoles.
- * @private
  */
 function requireRole_(userContext, allowedRoles) {
   if (allowedRoles.indexOf(userContext.role) === -1) {

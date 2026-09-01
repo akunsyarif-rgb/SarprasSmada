@@ -1,0 +1,15 @@
+{
+  "name": "sarpras-smada",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tooling deploy backend Google Apps Script (via clasp) untuk SIGAP SARPRAS SMADA. Frontend (frontend/) tidak butuh build step apa pun — lihat frontend/README.md.",
+  "scripts": {
+    "clasp:login": "clasp login",
+    "clasp:push": "clasp push",
+    "clasp:deploy:first": "echo 'Deploy PERTAMA KALI saja — membuat deployment baru. Untuk deploy berikutnya pakai `npm run clasp:deploy` dengan CLASP_DEPLOYMENT_ID (lihat docs/GAS_CLASP_DEPLOY.md).' && clasp push && clasp deploy",
+    "clasp:deploy": "node .github/scripts/clasp-deploy-existing.js"
+  },
+  "devDependencies": {
+    "@google/clasp": "^2.4.2"
+  }
+}
