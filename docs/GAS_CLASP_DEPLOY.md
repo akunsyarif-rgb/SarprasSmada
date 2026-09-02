@@ -1,10 +1,11 @@
 # Deploy Backend via clasp — SIGAP SARPRAS SMADA
 
-Jalur deploy utama untuk backend (`apps-script/`), memakai
-[`@google/clasp`](https://github.com/google/clasp) — meniru pola yang sama
-dengan aplikasi SIGAP (`Sigap-app`, TIDAK diubah oleh perubahan ini). Untuk
-jalur tanpa command line, lihat catatan deprecation di
-`docs/GAS_MANUAL_DEPLOY.md`.
+Jalur deploy backend (`apps-script/`) **untuk yang punya komputer dengan
+Node.js/terminal**, memakai [`@google/clasp`](https://github.com/google/clasp)
+— meniru pola yang sama dengan aplikasi SIGAP (`Sigap-app`, TIDAK diubah
+oleh perubahan ini). **Hanya punya iPad/tanpa command line sama sekali?**
+Pakai `docs/GAS_MANUAL_DEPLOY.md` — hasilnya identik, semuanya lewat
+Safari/browser.
 
 **Frontend (`frontend/`) TIDAK memakai clasp** — itu file statis biasa,
 di-deploy lewat hosting statis pilihan Anda (Vercel, GitHub Pages, dst.).

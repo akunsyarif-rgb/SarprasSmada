@@ -116,8 +116,10 @@ PHASE 7 di bawah).
   `.github/scripts/clasp-deploy-existing.js` — meniru pola aman yang sama
   dengan aplikasi SIGAP (`clasp deploy` TANPA `-i` ditolak, mencegah
   pembuatan deployment baru yang tidak disengaja). Lihat
-  `docs/GAS_CLASP_DEPLOY.md` (jalur utama, menggantikan
-  `docs/GAS_MANUAL_DEPLOY.md` yang sekarang usang).
+  `docs/GAS_CLASP_DEPLOY.md` (butuh komputer/terminal). Jalur tanpa command
+  line (`docs/GAS_MANUAL_DEPLOY.md`, cukup Safari/browser — untuk operator
+  yang hanya punya iPad) diperbarui mengikuti struktur file baru,
+  bukan dihapus — lihat `apps-script/deployment/DEPLOYMENT_BUNDLE.txt`.
 - **Belum diverifikasi** (di luar cakupan perubahan ini, lihat catatan di
   `frontend/README.md` dan `docs/GAS_CLASP_DEPLOY.md`): perilaku CORS Apps
   Script Web App end-to-end dari frontend yang benar-benar di-hosting di

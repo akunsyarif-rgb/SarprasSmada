@@ -58,9 +58,11 @@ ada.
 
 ## Deployment
 
-Lihat `docs/GAS_CLASP_DEPLOY.md` (jalur utama, lewat `clasp`) atau
-`docs/GAS_MANUAL_DEPLOY.md` (jalur tanpa command line — **sudah usang**,
-lihat catatan deprecation di berkas tersebut).
+Lihat `docs/GAS_CLASP_DEPLOY.md` (lewat `clasp`, butuh komputer/terminal) atau
+`docs/GAS_MANUAL_DEPLOY.md` (tanpa command line sama sekali — cukup Safari/
+browser, cocok untuk operator yang hanya punya iPad). Keduanya sama-sama
+valid dan menghasilkan deployment yang identik — pilih sesuai perangkat
+yang tersedia.
 
 **`webapp.access`/`webapp.executeAs`** pada `appsscript.json` diubah menjadi
 `"ANYONE_ANONYMOUS"`/`"USER_DEPLOYING"` — berbeda dari versi PHASE 4.5

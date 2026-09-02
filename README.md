@@ -34,7 +34,7 @@ Setiap transisi status harus melalui validasi eksplisit. Transisi yang tidak ses
 
 ## Teknologi Utama
 
-- **Google Apps Script** — platform eksekusi backend berbasis JavaScript yang berjalan di lingkungan Google, dideploy lewat `clasp` (lihat [`docs/GAS_CLASP_DEPLOY.md`](docs/GAS_CLASP_DEPLOY.md)).
+- **Google Apps Script** — platform eksekusi backend berbasis JavaScript yang berjalan di lingkungan Google, dideploy lewat `clasp` ([`docs/GAS_CLASP_DEPLOY.md`](docs/GAS_CLASP_DEPLOY.md), butuh terminal) atau manual lewat Safari/browser tanpa command line sama sekali ([`docs/GAS_MANUAL_DEPLOY.md`](docs/GAS_MANUAL_DEPLOY.md), cocok untuk operator yang hanya punya iPad).
 - **Google Spreadsheet** — digunakan sebagai media penyimpanan data (database) sistem.
 - **Service-based Architecture** — backend disusun dalam bentuk layanan (service) yang terpisah berdasarkan domain, untuk menjaga pemisahan tanggung jawab antara akses data dan logika bisnis.
 - **Frontend statis tanpa build step** (`frontend/`) — React tanpa JSX/bundler, di-hosting terpisah dari project Apps Script, berkomunikasi lewat JSON API bertoken (`fetch()` ke `apps-script/api/App.gs`). Pola yang sama dengan aplikasi SIGAP: penyimpanan di Spreadsheet, "sisanya" (frontend + tooling deploy) di GitHub.
@@ -69,7 +69,7 @@ SarprasSmada/
 
 ## Status Pengembangan Saat Ini
 
-Repository berada pada tahap **PHASE 4.75 — Decoupled Frontend & Token Authentication** (lihat [`docs/DEVELOPMENT_ROADMAP.md`](docs/DEVELOPMENT_ROADMAP.md)). Sistem sudah punya frontend fungsional (`frontend/`) yang terpisah dari backend, dideploy independen — persis pola yang diminta: penyimpanan di Google Spreadsheet, sisanya di GitHub. Lihat [`docs/GAS_CLASP_DEPLOY.md`](docs/GAS_CLASP_DEPLOY.md) untuk cara deploy backend dan [`frontend/README.md`](frontend/README.md) untuk cara deploy frontend.
+Repository berada pada tahap **PHASE 4.75 — Decoupled Frontend & Token Authentication** (lihat [`docs/DEVELOPMENT_ROADMAP.md`](docs/DEVELOPMENT_ROADMAP.md)). Sistem sudah punya frontend fungsional (`frontend/`) yang terpisah dari backend, dideploy independen — persis pola yang diminta: penyimpanan di Google Spreadsheet, sisanya di GitHub. Lihat [`docs/GAS_CLASP_DEPLOY.md`](docs/GAS_CLASP_DEPLOY.md) (butuh terminal) atau [`docs/GAS_MANUAL_DEPLOY.md`](docs/GAS_MANUAL_DEPLOY.md) (cukup Safari/browser, tanpa command line) untuk cara deploy backend, dan [`frontend/README.md`](frontend/README.md) untuk cara deploy frontend.
 
 Yang sudah selesai:
 
