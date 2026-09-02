@@ -73,6 +73,59 @@ Ditambahkan **di luar urutan roadmap awal**, atas prioritas eksplisit: sebelum m
 - Implementasi `apps-script/api/ReportApi.gs`, `apps-script/api/MasterDataApi.gs`, `apps-script/api/ApiUtil.gs` — fungsi publik `google.script.run` yang HANYA meneruskan permintaan ke Service Layer yang sudah ada (`reports/`, `master-data/`) dan membungkus hasil/error dengan `core/UtilityService.gs` — tidak ada logika bisnis baru di lapisan ini, dan tidak ada pemanggilan `SpreadsheetApp`/`DatabaseService` langsung.
 - **Tidak termasuk** (di luar scope, dijadwalkan fase berikutnya): RBAC penuh per jenis transisi status, Photo/Comment Engine, audit log, dan frontend final PHASE 7 (framework, desain).
 
+## PHASE 4.75 — Decoupled Frontend & Token Authentication
+
+Status: **Selesai**
+
+Ditambahkan **di luar urutan roadmap awal**, atas alasan yang sama dengan
+PHASE 4.5: MVP PHASE 4.5 (`api/Index.html` + `google.script.run`) hanya bisa
+dijalankan dari DALAM project Apps Script itu sendiri (`HtmlService`) —
+tidak ada cara menghostingnya sebagai aplikasi statis terpisah di GitHub
+seperti yang diminta secara eksplisit (menyamai arsitektur aplikasi SIGAP:
+penyimpanan di Google Spreadsheet, "sisanya" — frontend + tooling deploy —
+di GitHub). Perubahan ini sekaligus menuntaskan **PHASE 7 — Frontend** lebih
+awal (fungsional, belum melalui iterasi desain/UX — lihat catatan pada
+PHASE 7 di bawah).
+
+- **Frontend baru** (`frontend/`) — aplikasi statis React tanpa build step
+  DAN tanpa JSX/Babel (`React.createElement` langsung, lihat
+  `frontend/README.md` untuk alasan penyederhanaan ini dibanding pola SIGAP),
+  di-hosting terpisah dari project Apps Script. Mencakup seluruh fitur
+  backend yang sudah ada: login/logout/ganti password, buat & lihat laporan,
+  ubah status laporan, riwayat laporan, dan (ADMIN) pengelolaan data master
+  serta pengguna.
+- **`apps-script/api/App.gs`** dirombak total dari `doGet()` penyaji HTML
+  (`google.script.run`) menjadi JSON API bertoken (`doGet`/`doPost`),
+  meniru pola `Code.gs` pada aplikasi SIGAP. `api/Index.html` **dihapus**.
+- **Domain baru `apps-script/auth/`** (`AuthService.gs`) — login
+  username(email)/password + sesi bertoken (`CacheService`, TTL 6 jam),
+  menggantikan `Session.getActiveUser()` yang tidak lagi bisa diandalkan
+  begitu frontend dipindah ke origin terpisah. `apps-script/api/AuthContext.gs`
+  dirombak mengikuti (`requireSession_()` menggantikan
+  `getCurrentUserContext_()`).
+- **Schema `01_users` bertambah** `password_hash`/`password_salt` (additive,
+  lihat `docs/DATABASE_SCHEMA.md`) — baris pengguna lama TIDAK bisa login
+  sampai ADMIN menetapkan password awal (`docs/DATABASE_SETUP.md` bagian 10).
+- **`apps-script/appsscript.json`** diubah (`webapp.executeAs:
+  "USER_DEPLOYING"`, `webapp.access: "ANYONE_ANONYMOUS"`, dari
+  `"USER_ACCESSING"`/`"DOMAIN"`) — konsekuensi wajib dari lepasnya
+  ketergantungan pada sesi Google; keamanan akses sepenuhnya berpindah ke
+  token API + `AuthService`.
+- **Tooling deploy baru**: `.clasp.json.example`, `apps-script/.claspignore`,
+  `package.json` (`clasp:push`/`clasp:deploy`/`clasp:deploy:first`),
+  `.github/scripts/clasp-deploy-existing.js` — meniru pola aman yang sama
+  dengan aplikasi SIGAP (`clasp deploy` TANPA `-i` ditolak, mencegah
+  pembuatan deployment baru yang tidak disengaja). Lihat
+  `docs/GAS_CLASP_DEPLOY.md` (butuh komputer/terminal). Jalur tanpa command
+  line (`docs/GAS_MANUAL_DEPLOY.md`, cukup Safari/browser — untuk operator
+  yang hanya punya iPad) diperbarui mengikuti struktur file baru,
+  bukan dihapus — lihat `apps-script/deployment/DEPLOYMENT_BUNDLE.txt`.
+- **Belum diverifikasi** (di luar cakupan perubahan ini, lihat catatan di
+  `frontend/README.md` dan `docs/GAS_CLASP_DEPLOY.md`): perilaku CORS Apps
+  Script Web App end-to-end dari frontend yang benar-benar di-hosting di
+  origin terpisah. WAJIB diuji sebelum sistem dianggap benar-benar siap
+  dipakai pengguna nyata.
+
 ## PHASE 5 — Workflow & Authorization
 
 - Memperhalus otorisasi berbasis peran (role) untuk setiap aksi pada laporan (mis. siapa yang berhak memverifikasi vs. menugaskan vs. menutup laporan, bukan satu gerbang kasar untuk semua transisi). PHASE 4.5 sudah menambahkan otorisasi MINIMAL di `apps-script/api/AuthContext.gs` (hanya VERIFIKATOR/OWNER/ADMIN yang boleh memicu transisi status APA PUN) — `ReportWorkflowService.changeReportStatus()` sendiri (domain layer) tetap hanya memvalidasi legalitas URUTAN transisi, bukan hak akses; otorisasi memang sengaja ditempatkan di lapisan API/entry point, bukan domain, agar Service Layer tetap dapat dipanggil test/tools tanpa konteks pengguna.
@@ -89,9 +142,20 @@ Ditambahkan **di luar urutan roadmap awal**, atas prioritas eksplisit: sebelum m
 
 ## PHASE 7 — Frontend
 
-- Perancangan antarmuka pelaporan untuk pengguna (pelapor).
-- Perancangan antarmuka verifikasi dan penanganan laporan untuk verifikator/owner.
-- Integrasi frontend dengan backend Google Apps Script.
+Status: **Fungsional lebih awal lewat PHASE 4.75 — desain/UX belum digarap**
+
+Versi FUNGSIONAL frontend (integrasi penuh ke backend, seluruh fitur yang
+ada dipakaikan UI) sudah selesai lewat **PHASE 4.75 — Decoupled Frontend &
+Token Authentication** di atas, lebih awal dari urutan roadmap asli (alasan
+sama dengan PHASE 4.5: sistem harus bisa dipakai pengguna nyata lebih dulu).
+Sisa pekerjaan PHASE 7 yang BELUM digarap:
+
+- Perancangan visual/UX (saat ini murni fungsional, CSS minim — lihat
+  `frontend/index.html`).
+- Perancangan antarmuka yang dioptimalkan per peran (pelapor vs
+  verifikator/owner) — saat ini satu antarmuka generik untuk semua peran
+  yang login, dibedakan lewat kontrol yang ditampilkan/disembunyikan
+  (`frontend/app.js`), bukan alur terpisah.
 
 ## PHASE 8 — Production Readiness
 

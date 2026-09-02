@@ -1,203 +1,281 @@
-# Panduan Deploy Manual ke Google Apps Script (TANPA clasp)
+# Deploy Tanpa Command Line (iPad/Browser) — SIGAP SARPRAS SMADA
 
-Panduan ini untuk operator yang ingin menjalankan SIGAP SARPRAS MVP di
-sebuah project Google Apps Script **baru**, dibuat langsung dari browser
-(Windows/iPad/dsb.) — **tanpa `clasp`**, tanpa command line sama sekali.
+Panduan ini untuk operator yang **hanya punya iPad** (atau perangkat lain
+tanpa terminal/command line sama sekali) — semuanya lewat Safari. Jika
+punya akses komputer dengan Node.js, jalur `clasp` di
+`docs/GAS_CLASP_DEPLOY.md` lebih cepat untuk update berikutnya, tapi
+**sepenuhnya opsional** — panduan ini cukup untuk semuanya, dari nol sampai
+sistem berjalan.
 
-Sumber seluruh kode: branch `main` repository ini, direktori `apps-script/`.
-Cara tercepat mengambil source: buka
-[`apps-script/deployment/MVP_DEPLOYMENT_BUNDLE.txt`](../apps-script/deployment/MVP_DEPLOYMENT_BUNDLE.txt)
-— satu file berisi seluruh source runtime, dipisahkan penanda
-`===== FILE: <nama> =====` per file, dalam urutan pembuatan yang sama
-seperti tabel di bawah. Salin isi setiap bagian ke file Apps Script dengan
-nama yang sama persis.
+Sumber seluruh kode: branch/`main` repository ini. Cara tercepat mengambil
+source tanpa buka puluhan file satu-satu: buka
+[`apps-script/deployment/DEPLOYMENT_BUNDLE.txt`](../apps-script/deployment/DEPLOYMENT_BUNDLE.txt)
+di GitHub (lewat Safari) — satu file berisi seluruh source backend,
+dipisahkan penanda `===== FILE: <nama> =====` per file, dalam urutan yang
+sama seperti tabel di bagian 2. Salin isi setiap bagian ke file Apps
+Script dengan nama yang sama persis.
 
-**Cakupan panduan ini HANYA MVP Web App (PHASE 4.5 — Report Engine test
-harness).** Domain `audit/`, Photo/Comment Engine, dan frontend final
-PHASE 7 belum ada di scope ini (lihat `docs/DEVELOPMENT_ROADMAP.md`).
+> **Penting jika Anda pernah mengikuti versi lama panduan ini**: sistem
+> sudah berubah arsitektur (lihat `apps-script/api/README.md` — login
+> sekarang email/password bertoken, bukan lagi sesi Google). Bundle di atas
+> SELALU dibuat ulang mengikuti source code terbaru — jangan pakai salinan
+> lama yang mungkin pernah Anda simpan.
 
 ---
 
 ## 0. Prasyarat — jangan lewati
 
-- **Spreadsheet database SUDAH ADA dan sudah punya sheet + header sesuai
-  `docs/DATABASE_SCHEMA.md`** (minimal: `01_users`, `02_locations`,
-  `03_categories`, `04_facilities`, `05_owners`, `10_reports`,
-  `12_report_history`, `91_sequences`). Panduan ini **TIDAK** membuat atau
-  mengubah struktur spreadsheet apa pun, **TIDAK** menjalankan
-  `setupDatabase()`, dan **TIDAK** menyentuh `tools/InspectDatabase.gs` /
-  `tools/DatabaseInspectorStandalone.gs` / `tools/SetupDatabase.gs`. Jika
-  Anda belum yakin struktur spreadsheet sudah benar, baca
-  `docs/DATABASE_SETUP.md` dan tangani itu **secara terpisah** — di luar
-  langkah-langkah panduan ini.
-- Minimal satu baris di `01_users` dengan `email` **sama persis** dengan
-  akun Google yang akan Anda pakai untuk membuka Web App, `is_active =
-  TRUE`, dan `role` salah satu dari `SISWA/GURU/STAF/VERIFIKATOR/OWNER/
-  ADMIN`. Tanpa ini, halaman akan selalu gagal menampilkan identitas
-  pengguna (lihat bagian Testing).
-- Anda tahu **Spreadsheet ID** database (bagian URL di antara
-  `/d/` dan `/edit`).
+- **Spreadsheet database sudah disiapkan** sesuai `docs/DATABASE_SETUP.md`
+  bagian 1–9 (bisa dari Safari + Google Sheets, tidak butuh command line —
+  lewat `setupDatabase()` yang dijalankan dari editor Apps Script, sama
+  seperti langkah di bagian 8 panduan ini). Sheet `01_users` WAJIB sudah
+  punya kolom `password_hash`/`password_salt` (lihat catatan di
+  `docs/DATABASE_SETUP.md` bagian 5).
+- Minimal satu baris di `01_users` dengan `role = ADMIN` dan
+  `is_active = TRUE` — ini akun yang akan diberi password pertama di
+  bagian 7 panduan ini.
+- Anda tahu **Spreadsheet ID** database (bagian URL di antara `/d/` dan
+  `/edit`, buka spreadsheet-nya di Safari untuk menyalinnya).
+
+### 0.1 Sudah punya spreadsheet dari sebelumnya? Lakukan ini dulu
+
+**Jangan asumsikan spreadsheet Anda sudah punya struktur yang cocok.**
+Sebelum lanjut ke bagian 2, periksa dulu (semua lewat Safari, tanpa command
+line):
+
+1. Buka [script.google.com](https://script.google.com) → **New project**.
+   Ini project SEMENTARA hanya untuk memeriksa — boleh dipakai lagi untuk
+   deploy sungguhan di bagian 2 nanti, tidak perlu bikin ulang.
+2. Buat 4 file `.gs` (nama persis): `core/Config`, `core/DatabaseService`,
+   `core/UtilityService`, `tools/InspectDatabase` — isinya salin dari
+   `apps-script/deployment/DEPLOYMENT_BUNDLE.txt` (bagian paling bawah
+   bundle punya 2 section tambahan bertanda "OPSIONAL", termasuk
+   `InspectDatabase.gs`).
+3. **Project Settings > Script Properties** → tambahkan `SPREADSHEET_ID` =
+   ID spreadsheet lama Anda.
+4. Kembali ke editor, pilih file `tools/InspectDatabase`, pilih fungsi
+   `inspectExistingDatabase` di dropdown pemilihan fungsi, klik **Run**.
+   Fungsi ini **100% read-only** — tidak mengubah apa pun di spreadsheet
+   Anda, aman dijalankan kapan saja.
+5. Buka **Executions** (ikon jam) untuk lihat hasilnya. Cari baris
+   `STATUS: READY / PARTIAL / MISMATCH_FOUND`.
+6. **Khusus untuk PR ini**, tidak peduli hasil STATUS-nya apa: sheet
+   `01_users` di spreadsheet lama Anda **pasti belum punya** kolom
+   `password_hash`/`password_salt` (kolom ini baru ada di PR ini, tidak
+   mungkin sudah ada di spreadsheet lama). **Tambahkan manual**: buka sheet
+   `01_users` di Google Sheets, ke kolom paling kanan yang terisi, tambahkan
+   dua header baru persis di baris 1: `password_hash` lalu `password_salt`
+   di kolom sebelahnya. Biarkan isinya kosong untuk semua baris — akan
+   terisi otomatis lewat `setPassword()` (bagian 5).
+7. Kalau STATUS bukan `READY` karena alasan LAIN (sheet hilang, kolom lain
+   yang mismatch) — **jangan lanjut dulu**, salin hasil log dari langkah 5
+   dan bagikan ke saya untuk dianalisis sebelum melangkah lebih jauh.
+   `tools/SetupDatabase.gs` (section bundle setelah `InspectDatabase.gs`)
+   aman dipakai untuk MELENGKAPI sheet yang belum ada tanpa menyentuh yang
+   sudah benar (fungsi `setupDatabase()`), tapi tidak memperbaiki mismatch
+   kolom secara otomatis.
+8. Kalau STATUS `READY` (atau `PARTIAL` karena memang ada sheet yang belum
+   dipakai, bukan mismatch) dan kolom password sudah ditambahkan — lanjut
+   ke bagian 2, PAKAI project Apps Script yang sama ini (tidak perlu buat
+   baru), tinggal tambahkan 16 file sisanya di tabel bagian 2 (4 file di
+   atas sudah dibuat).
 
 ## 1. Kenapa urutan pembuatan file penting
 
 Google Apps Script menggabungkan seluruh file `.gs` dalam satu project
-menjadi satu konteks eksekusi global, dan kode di level atas (`var ...`
-di luar fungsi) dijalankan mengikuti urutan file yang tampil di panel
-editor — **bukan** urutan Anda membuatnya. Karena project baru ini dibuat
-manual (tanpa `clasp` yang bisa memaksa urutan lewat konfigurasi), urutan
-file di panel editor sangat menentukan.
+menjadi satu konteks eksekusi global. Fungsi bisa saling memanggil lintas
+file tanpa masalah (dan tanpa perlu import apa pun), TAPI kode di level
+atas file (`var ...` di luar fungsi manapun) dijalankan mengikuti urutan
+file yang tampil di panel editor. Seluruh konstanta top-level pada source
+saat ini hanya berupa angka/string literal (tidak membaca `CONFIG` atau
+fungsi lain saat file dimuat) — jadi urutan sebenarnya TIDAK kritis untuk
+source saat ini, tapi **tetap ikuti urutan di bawah** sebagai praktik aman,
+terutama jika Anda menambah kode baru nanti.
 
-Sebagian besar file di sini aman dari isu ini (konstanta top-level-nya
-hanya angka/string literal). Satu file, `api/AuthContext.gs`, sempat
-memiliki konstanta top-level yang membaca `CONFIG.ROLES` — ini SUDAH
-diperbaiki di source repository (lihat commit yang menyertai panduan ini)
-menjadi fungsi `getWorkflowAllowedRoles_()` yang dievaluasi saat dipanggil,
-bukan saat file dimuat, sehingga tidak lagi bergantung urutan file. Source
-pada bundle sudah termasuk perbaikan ini.
+## 2. Daftar file, urutan, dan nama persis
 
-**Tetap ikuti urutan pembuatan pada tabel di bagian 2** sebagai praktik
-aman, dan setelah semua file dibuat, **cek panel daftar file di editor
-Apps Script** — jika editor mengurutkan ulang secara alfabetis, itu tidak
-masalah untuk source saat ini (karena perbaikan di atas), tapi tetap
-hindari menambahkan kode baru dengan konstanta top-level yang bergantung
-pada file lain.
+Buat file dengan **File > New > Script** (untuk `.gs`) di editor Apps
+Script, satu per satu, sesuai urutan berikut. Beri nama **persis** seperti
+kolom "Nama file di Apps Script" (Apps Script mengizinkan `/` pada nama
+file untuk pengelompokan tampilan folder di editor — pakai itu agar
+strukturnya tetap mudah dikenali seperti repository).
 
-## 2. Daftar file, urutan, nama persis, dan dependency
+| # | Nama file di Apps Script | Sumber di bundle |
+|---|---|---|
+| 1 | `core/Config` | `apps-script/core/Config.gs` |
+| 2 | `core/DatabaseService` | `apps-script/core/DatabaseService.gs` |
+| 3 | `core/SequenceService` | `apps-script/core/SequenceService.gs` |
+| 4 | `core/UtilityService` | `apps-script/core/UtilityService.gs` |
+| 5 | `auth/AuthService` | `apps-script/auth/AuthService.gs` |
+| 6 | `users/UserService` | `apps-script/users/UserService.gs` |
+| 7 | `master-data/LocationService` | `apps-script/master-data/LocationService.gs` |
+| 8 | `master-data/CategoryService` | `apps-script/master-data/CategoryService.gs` |
+| 9 | `master-data/FacilityService` | `apps-script/master-data/FacilityService.gs` |
+| 10 | `master-data/OwnerService` | `apps-script/master-data/OwnerService.gs` |
+| 11 | `reports/ReportHistoryService` | `apps-script/reports/ReportHistoryService.gs` |
+| 12 | `reports/ReportService` | `apps-script/reports/ReportService.gs` |
+| 13 | `reports/ReportWorkflowService` | `apps-script/reports/ReportWorkflowService.gs` |
+| 14 | `api/AuthContext` | `apps-script/api/AuthContext.gs` |
+| 15 | `api/ApiUtil` | `apps-script/api/ApiUtil.gs` |
+| 16 | `api/AuthApi` | `apps-script/api/AuthApi.gs` |
+| 17 | `api/UserApi` | `apps-script/api/UserApi.gs` |
+| 18 | `api/MasterDataApi` | `apps-script/api/MasterDataApi.gs` |
+| 19 | `api/ReportApi` | `apps-script/api/ReportApi.gs` |
+| 20 | `api/App` | `apps-script/api/App.gs` — satu-satunya `doGet()`/`doPost()` |
 
-Buat file dengan **File > New > Script** (untuk `.gs`) atau **File > New >
-HTML** (khusus `Index.html`) di editor Apps Script, satu per satu, sesuai
-urutan berikut. Beri nama **persis** seperti kolom "Nama file di Apps
-Script" (Apps Script mengizinkan `/` pada nama file untuk pengelompokan
-tampilan folder di editor — gunakan itu agar strukturnya tetap mudah
-dikenali seperti repository).
+Tidak ada file lain yang perlu dibuat — `apps-script/tests/`,
+`apps-script/tools/`, dan seluruh `README.md` SENGAJA tidak masuk deploy
+Web App (utilitas satu-kali/pengujian manual, dijalankan terpisah lewat
+editor bila dibutuhkan, lihat `docs/DATABASE_SETUP.md`).
 
-| # | Nama file di Apps Script | Sumber di bundle | Dependency (harus sudah ada) |
-|---|---|---|---|
-| 1 | `core/Config` | `core/Config.gs` | — |
-| 2 | `core/DatabaseService` | `core/DatabaseService.gs` | `core/Config` |
-| 3 | `core/UtilityService` | `core/UtilityService.gs` | `core/Config` |
-| 4 | `core/SequenceService` | `core/SequenceService.gs` | `core/Config`, `core/DatabaseService` |
-| 5 | `users/UserService` | `users/UserService.gs` | `core/Config`, `core/DatabaseService`, `core/SequenceService`, `core/UtilityService` |
-| 6 | `master-data/LocationService` | `master-data/LocationService.gs` | `core/Config`, `core/DatabaseService`, `core/SequenceService`, `core/UtilityService` |
-| 7 | `master-data/CategoryService` | `master-data/CategoryService.gs` | sama seperti di atas (baca sheet `04_facilities` langsung untuk cek referensi, tanpa memanggil FacilityService) |
-| 8 | `master-data/FacilityService` | `master-data/FacilityService.gs` | sama seperti di atas (baca sheet `03_categories` langsung, tanpa memanggil CategoryService) |
-| 9 | `master-data/OwnerService` | `master-data/OwnerService.gs` | `core/Config`, `core/DatabaseService`, `core/SequenceService`, `core/UtilityService` |
-| 10 | `reports/ReportHistoryService` | `reports/ReportHistoryService.gs` | `core/Config`, `core/DatabaseService`, `core/SequenceService`, `core/UtilityService` |
-| 11 | `reports/ReportService` | `reports/ReportService.gs` | # 1–4, 10 (`ReportHistoryService.reportHistoryRecord_`), plus baca `01_users`/`02_locations`/`03_categories`/`04_facilities`/`05_owners` langsung untuk validasi referensi |
-| 12 | `reports/ReportWorkflowService` | `reports/ReportWorkflowService.gs` | `core/Config`, `core/DatabaseService`, `core/UtilityService`, `reports/ReportService` (`getReportById`, `reportValidateActiveUser_`, `reportValidateStatusValue_`), `reports/ReportHistoryService` |
-| 13 | `api/AuthContext` | `api/AuthContext.gs` | `core/Config` (`CONFIG.ROLES`), `core/UtilityService` (`isEmpty`), `users/UserService` (`getUserByEmail`) |
-| 14 | `api/ApiUtil` | `api/ApiUtil.gs` | `core/UtilityService` |
-| 15 | `api/MasterDataApi` | `api/MasterDataApi.gs` | `api/AuthContext`, `api/ApiUtil`, `master-data/LocationService`, `master-data/CategoryService` |
-| 16 | `api/ReportApi` | `api/ReportApi.gs` | `core/Config`, `api/AuthContext`, `api/ApiUtil`, `reports/ReportService`, `reports/ReportWorkflowService`, `reports/ReportHistoryService` |
-| 17 | `api/App` | `api/App.gs` | `api/Index` (HTML, lihat # 18) — satu-satunya `doGet()` |
-| 18 | `api/Index` | `api/Index.html` | dipanggil dari `api/App`; memanggil `apiGetCurrentUser`, `apiListLocations`, `apiListCategories`, `apiGetReportStatusOptions`, `apiListReports`, `apiCreateReport`, `apiChangeReportStatus` lewat `google.script.run` |
+### Cara mengisi tiap file (di iPad, lewat Safari)
 
-**Tidak perlu file lain.** File berikut SENGAJA tidak masuk MVP ini —
-jangan dibuat di project baru:
-`tests/CoreSmokeTest.gs`, `tests/MasterDataSmokeTest.gs`,
-`tests/ReportEngineSmokeTest.gs`, `tests/SequenceCompatibilitySmokeTest.gs`,
-`tests/InspectDatabaseSmokeTest.gs`, `tools/InspectDatabase.gs`,
-`tools/DatabaseInspectorStandalone.gs`, `tools/SetupDatabase.gs`, dan
-seluruh `README.md`.
-
-### Cara mengisi tiap file
-
-1. Buka `apps-script/deployment/MVP_DEPLOYMENT_BUNDLE.txt`.
-2. Cari penanda `===== FILE: <path-repo> =====` sesuai kolom "Sumber di
-   bundle" pada tabel di atas.
-3. Salin **seluruh isi** di bawah penanda tersebut sampai sebelum penanda
-   `===== FILE:` berikutnya.
-4. Tempel ke file Apps Script dengan nama pada kolom "Nama file di Apps
-   Script" (hapus isi bawaan `function myFunction() {}` yang otomatis
-   dibuat Apps Script pada file baru).
+1. Buka `apps-script/deployment/DEPLOYMENT_BUNDLE.txt` di GitHub (Safari).
+   Tap tombol **Raw** di halaman GitHub supaya tampilan teksnya polos, lebih
+   gampang di-select-all per bagian.
+2. Cari penanda `===== FILE: apps-script/<path> =====` sesuai kolom
+   "Sumber di bundle" pada tabel di atas.
+3. Tap-tahan untuk **select** seluruh isi di bawah penanda tersebut sampai
+   sebelum penanda `===== FILE:` berikutnya (Safari punya handle seleksi
+   yang bisa diseret — pilih dari baris setelah penanda sampai baris
+   terakhir sebelum penanda berikutnya), lalu **Copy**.
+4. Kembali ke tab editor Apps Script, tempel (**Paste**) ke file yang baru
+   dibuat dengan nama pada kolom "Nama file di Apps Script" — hapus dulu
+   isi bawaan `function myFunction() {}` yang otomatis dibuat Apps Script
+   pada file baru.
+5. Ulangi untuk seluruh 20 baris tabel.
 
 ### Manifest (`appsscript.json`)
 
-File ini bukan dibuat lewat "New > Script", melainkan lewat menu editor
-Apps Script: **Project Settings (ikon gerigi)** → centang **"Show
+Bagian TERAKHIR pada bundle (`===== FILE: apps-script/appsscript.json =====`)
+BUKAN dibuat lewat "New > Script", melainkan lewat menu editor Apps
+Script: **Project Settings (ikon gerigi)** → centang **"Show
 'appsscript.json' manifest file in editor"** → file `appsscript.json`
 akan muncul di panel file. Buka, ganti seluruh isinya dengan bagian
-`===== FILE: appsscript.json =====` dari bundle. Isinya menentukan:
-- `webapp.executeAs: "USER_ACCESSING"` — **WAJIB**, agar
-  `Session.getActiveUser()` di `AuthContext.gs` bisa mengenali pengguna
-  yang benar-benar mengakses (bukan pemilik script).
-- `webapp.access: "DOMAIN"` — hanya akun dalam Google Workspace yang sama
-  yang bisa mengakses. Sesuaikan dengan kebijakan Anda bila perlu (lihat
-  catatan di `apps-script/api/README.md` — `"ANYONE_ANONYMOUS"` TIDAK
-  disarankan karena sesi anonim tidak bisa diidentifikasi).
+tersebut dari bundle. Isinya menentukan:
+- `webapp.executeAs: "USER_DEPLOYING"` — script berjalan sebagai identitas
+  Anda (pemilik/deployer), BUKAN identitas pengguna yang mengakses —
+  konsekuensi dari sistem sekarang memakai login email/password sendiri
+  (lihat `apps-script/auth/README.md`), bukan lagi sesi Google.
+- `webapp.access: "ANYONE_ANONYMOUS"` — siapa pun bisa MENCAPAI Web App
+  URL-nya (tidak perlu login Google) — keamanan sesungguhnya ada di token
+  API + login aplikasi, BUKAN di lapisan akses Apps Script ini. Lihat
+  `apps-script/api/App.gs` untuk penjelasan lengkap dua lapis token ini.
 
-## 3. Script Properties (Spreadsheet ID)
+## 3. Script Properties (Spreadsheet ID + Token API)
 
-Aplikasi TIDAK menyimpan Spreadsheet ID di kode — wajib diset lewat Script
-Properties:
+Aplikasi TIDAK menyimpan Spreadsheet ID maupun token API di kode — wajib
+diset lewat Script Properties:
 
 1. Di editor Apps Script: **Project Settings (ikon gerigi)**.
 2. Scroll ke bagian **Script Properties**.
-3. **Add script property**:
-   - Property: `SPREADSHEET_ID`
-   - Value: ID spreadsheet database Anda (dari URL, bagian antara `/d/`
-     dan `/edit`).
+3. **Add script property** dua kali:
+   - Property: `SPREADSHEET_ID` — Value: ID spreadsheet database Anda
+     (lihat bagian 0).
+   - Property: `API_TOKEN` — Value: string acak bebas yang cukup panjang
+     (mis. ketik asal 30+ karakter campur huruf-angka, atau minta bantuan
+     generator UUID online). Catat nilainya — akan dipakai lagi di
+     `frontend/config.js` (bagian 6).
 4. **Save script properties**.
 
 Tanpa langkah ini, setiap pemanggilan API akan gagal dengan pesan error
-dari `Config.getSpreadsheetId()` yang secara eksplisit menyebutkan
-`SPREADSHEET_ID` belum diset.
+eksplisit (`Config.getSpreadsheetId()`/`Config.getApiToken()` menyebutkan
+persis Script Property mana yang belum diset).
 
 ## 4. Deploy sebagai Web App
 
-1. Simpan seluruh file (Ctrl+S / Cmd+S atau ikon simpan).
+1. Simpan seluruh file (ikon simpan di toolbar editor).
 2. Klik **Deploy > New deployment**.
 3. Klik ikon gerigi di samping "Select type" → pilih **Web app**.
 4. Isi:
-   - Description: bebas, mis. "MVP manual deploy".
-   - Execute as: **User accessing the web app** (harus sama dengan
-     `webapp.executeAs` di manifest).
-   - Who has access: sesuai `webapp.access` di manifest (mis. hanya akun
-     dalam organisasi Anda).
+   - Description: bebas, mis. "Deploy pertama".
+   - Execute as: **Me (<email Anda>)** — harus sama dengan
+     `webapp.executeAs: "USER_DEPLOYING"` di manifest.
+   - Who has access: **Anyone** — harus sama dengan
+     `webapp.access: "ANYONE_ANONYMOUS"` di manifest.
 5. Klik **Deploy**.
 6. Google akan meminta otorisasi (Authorize access) — pilih akun Google
    Anda, terima peringatan "unverified app" (wajar untuk script pribadi/
    internal yang belum diverifikasi Google), izinkan akses ke Spreadsheet.
-7. Salin **Web app URL** yang muncul — inilah URL untuk membuka MVP dari
-   browser/iPad/Windows.
+7. Salin **Web app URL** yang muncul (bentuknya
+   `https://script.google.com/macros/s/.../exec`) — dipakai di bagian 6.
 
-Setiap kali Anda mengubah isi file setelah deployment pertama, ulangi
-lewat **Deploy > Manage deployments** → pilih deployment yang ada → ikon
-pensil (Edit) → ganti **Version** ke **New version** → **Deploy**, supaya
-URL yang sama memuat kode terbaru.
+## 5. Bootstrap Password Admin Pertama
 
-## 5. Langkah testing pertama
+Tidak bisa lewat Web App (butuh sudah login sebagai ADMIN, yang belum
+mungkin untuk akun ADMIN pertama). Jalankan sekali langsung dari editor:
 
-1. Buka Web App URL dari langkah 4 di browser (disarankan mencoba dari
-   akun Google yang emailnya sudah terdaftar di `01_users` sebagai
-   langkah pertama).
-2. Halaman **"SIGAP SARPRAS — Report Engine (Test Harness, PHASE 4.5)"**
-   akan tampil dengan baris **"Memuat identitas pengguna..."**, lalu
-   berubah menjadi **"Masuk sebagai: <nama> (<email>) — peran: <role>"**.
-   - Jika muncul pesan error "Email ... belum terdaftar sebagai pengguna
-     SIGAP SARPRAS" → tambahkan baris pengguna tersebut ke `01_users`
-     (manual lewat spreadsheet, `is_active = TRUE`) lalu muat ulang
-     halaman. (Menambah baris data BUKAN mengubah schema — aman.)
-3. Dropdown **Lokasi** dan **Kategori** pada form "Buat Laporan Baru"
-   harus terisi data dari `02_locations`/`03_categories` yang aktif. Jika
-   kosong, pastikan ada baris dengan `is_active = TRUE` di sheet tersebut.
-4. Isi form (Lokasi, Kategori, Deskripsi wajib) dan klik **Kirim
-   Laporan**. Berhasil jika muncul pesan hijau "Laporan berhasil dibuat:
-   SRP-YYYY-000001" dan baris baru muncul di tabel **Daftar Laporan**.
-5. Jika akun Anda berperan `VERIFIKATOR`/`OWNER`/`ADMIN`, kolom "Aksi"
-   pada tabel laporan akan menampilkan dropdown status + tombol **Ubah
-   Status**. Coba ubah status laporan yang baru dibuat dari `SUBMITTED`
-   ke `VERIFIED` — berhasil jika status di tabel berubah tanpa reload
-   manual.
-6. Jika langkah 2–5 semuanya berhasil, MVP sudah berjalan penuh di project
-   Apps Script baru ini.
+1. Di editor Apps Script, buka file `auth/AuthService`.
+2. Di dropdown pemilihan fungsi (bagian atas editor, di sebelah tombol
+   **Run**), pilih fungsi `setPassword`.
+3. Sebelum klik **Run**, Anda perlu memberi argumen — cara termudah di
+   editor Apps Script: buka file mana saja (mis. `core/Config`), scroll ke
+   paling bawah, sementara ketik fungsi bantu ini (JANGAN commit/simpan
+   permanen, cukup untuk sekali jalan lalu hapus lagi):
+   ```js
+   function bootstrapAdminPassword_TEMP() {
+     setPassword('<user_id ADMIN dari 01_users>', '<password baru Anda>');
+   }
+   ```
+4. Pilih `bootstrapAdminPassword_TEMP` di dropdown fungsi, klik **Run**.
+5. Google akan minta otorisasi lagi pada pemanggilan pertama — setujui.
+6. Buka **Executions** (ikon jam di sidebar) untuk memastikan tidak ada
+   error.
+7. **Hapus fungsi sementara tadi** dari file (agar password tidak
+   tertinggal dalam bentuk teks polos di source), lalu **Save**.
+
+Password admin pertama ini sekarang bisa dipakai login lewat frontend.
+Untuk pengguna berikutnya, ADMIN yang sudah login cukup pakai menu
+"Set Password" di frontend (tidak perlu lagi lewat editor Apps Script).
+
+## 6. Sambungkan Frontend
+
+Edit `frontend/config.js` langsung dari GitHub (Safari, tidak perlu
+command line):
+
+1. Buka `frontend/config.js` di GitHub.
+2. Tap ikon pensil (**Edit this file**) — kalau tidak muncul, tap dulu
+   ikon "..." atau buka lewat **Edit in place** di menu berbagi Safari.
+3. Ganti `PASTE_WEB_APP_URL_DI_SINI` dengan Web App URL dari bagian 4.7.
+4. Ganti `PASTE_API_TOKEN_DI_SINI` dengan nilai `API_TOKEN` dari bagian 3.
+5. **Commit changes** — pilih commit langsung ke branch yang sedang aktif
+   (atau ke `main` bila PR terkait sudah di-merge).
+
+Lihat `frontend/README.md` untuk langkah hosting `frontend/` (Vercel dkk,
+juga sepenuhnya lewat browser/dashboard web, tidak butuh command line).
+
+## 7. Langkah Testing Pertama
+
+1. Buka `frontend/config.js` sekali lagi untuk pastikan isinya sudah benar
+   (bukan placeholder lagi).
+2. Buka URL frontend yang sudah di-hosting (bagian 6/`frontend/README.md`)
+   dari Safari.
+3. Login pakai email + password admin dari bagian 5.
+4. Coba buat laporan baru, lihat daftar laporan, ubah status.
+5. **WAJIB dicoba dari frontend yang benar-benar online** (bukan file
+   lokal) — lihat catatan CORS di `frontend/README.md`, perilaku ini belum
+   pernah diverifikasi sebelumnya.
 
 ### Troubleshooting singkat
 
 | Gejala | Kemungkinan penyebab |
 |---|---|
-| Error "Script Property SPREADSHEET_ID belum diset" | Ulangi bagian 3. |
-| Error "Sheet ... tidak ditemukan pada spreadsheet" | Spreadsheet ID benar tapi sheet dengan nama itu belum ada — lihat Prasyarat, bagian 0 (di luar scope panduan ini untuk membuatnya). |
-| "Email ... belum terdaftar" terus-menerus meski sudah ditambahkan | Pastikan penulisan email di `01_users` sama persis (huruf besar/kecil tidak masalah, tapi typo tetap gagal) dan `is_active` benar `TRUE` (boolean), bukan teks `"TRUE"`. |
-| Halaman blank / error skrip saat dibuka | Buka **Executions** (ikon jam di sidebar editor) untuk melihat stack trace; cek juga apakah semua 18 file pada tabel bagian 2 sudah dibuat dan tidak ada nama file yang typo (nama file dipakai `HtmlService.createHtmlOutputFromFile('api/Index')` di `api/App.gs` — harus persis `api/Index`). |
-| "Peran ... tidak diizinkan melakukan aksi ini" saat ubah status | Wajar — hanya `VERIFIKATOR`/`OWNER`/`ADMIN` yang boleh mengubah status (lihat `apps-script/api/AuthContext.gs`). |
+| "Token API tidak valid" | `API_TOKEN` di `frontend/config.js` tidak sama persis dengan Script Property `API_TOKEN`. |
+| "Server belum dikonfigurasi (API_TOKEN belum diset)" | Ulangi bagian 3. |
+| "Email atau password salah" terus meski sudah di-set | Cek lagi `user_id` yang dipakai di bagian 5 — harus persis dari kolom `user_id`, bukan email. |
+| "Sheet ... tidak ditemukan pada spreadsheet" | `SPREADSHEET_ID` benar tapi sheet dengan nama itu belum ada — lihat `docs/DATABASE_SETUP.md`. |
+| Halaman frontend blank / gagal fetch | Cek Console browser (di iPad: buka Settings > Safari > Advanced > Web Inspector, sambungkan ke Mac bila ada; atau coba dari browser desktop dulu untuk diagnosis) — kemungkinan CORS atau Root Directory hosting salah, lihat `frontend/README.md`. |
+
+## 8. Update Setelah Deploy Pertama (setiap ada perubahan `.gs`)
+
+1. Buka lagi `apps-script/deployment/DEPLOYMENT_BUNDLE.txt` versi terbaru
+   di GitHub.
+2. Salin ulang bagian file yang berubah, tempel menimpa isi file yang
+   sama di editor Apps Script (bagian 2).
+3. **Deploy > Manage deployments** → pilih deployment yang ada → ikon
+   pensil (Edit) → ganti **Version** ke **New version** → **Deploy** —
+   supaya Web App URL yang sama (dan `frontend/config.js` yang sudah
+   diisi) tetap memuat kode terbaru tanpa perlu diubah lagi.
+
+**Jangan** membuat deployment BARU (`Deploy > New deployment`) untuk
+update — itu menghasilkan URL BARU yang tidak dikenal `frontend/config.js`.

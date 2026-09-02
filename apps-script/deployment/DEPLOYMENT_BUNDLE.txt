@@ -1,15 +1,4 @@
-SIGAP SARPRAS MVP — Deployment Bundle (NO CLASP, manual Google Apps Script)
-Generated from repository branch: claude/sigap-sarpras-deployment-bundle-lgto9u
-Generated from commit: 399ac4c8c3fded5c5586c7ea1e12bdd6b77259c7
-Generated at: 2026-08-31T06:21:54Z
-
-PENTING: File-file di bawah ini HARUS dibuat di Google Apps Script sesuai
-urutan yang tercantum (urutan ini adalah urutan dependency, dari yang
-paling tidak bergantung ke yang paling bergantung). Lihat
-docs/GAS_MANUAL_DEPLOY.md untuk panduan lengkap langkah demi langkah.
-
-===== FILE: core/Config.gs =====
-
+===== FILE: apps-script/core/Config.gs =====
 /**
  * Config.gs
  *
@@ -37,7 +26,20 @@ docs/GAS_MANUAL_DEPLOY.md untuk panduan lengkap langkah demi langkah.
 var CONFIG = {
   /** Key Script Properties yang digunakan sistem. */
   SCRIPT_PROPERTY_KEYS: {
-    SPREADSHEET_ID: 'SPREADSHEET_ID'
+    SPREADSHEET_ID: 'SPREADSHEET_ID',
+    /**
+     * Token statis bersama antara frontend (apps-script/../frontend/, di
+     * luar project Apps Script ini) dan Web App ini sendiri. BUKAN
+     * pengganti login pengguna — hanya gerbang pertama yang menolak
+     * request tanpa token sebelum request itu sempat menyentuh
+     * AuthService/DatabaseService sama sekali (lihat api/App.gs
+     * checkToken_()). Wajib diset manual lewat Script Properties, TIDAK
+     * PERNAH di-hardcode di kode (nilainya juga dikirim ke browser lewat
+     * frontend/config.js, jadi tetap bukan rahasia yang benar-benar aman
+     * — keamanan akses pengguna sesungguhnya ada di AuthService, bukan
+     * token ini).
+     */
+    API_TOKEN: 'API_TOKEN'
   },
 
   /** Timezone resmi yang digunakan seluruh sistem untuk pencatatan waktu. */
@@ -155,6 +157,31 @@ function getSpreadsheetId() {
 }
 
 /**
+ * Mengambil token API statis (lihat CONFIG.SCRIPT_PROPERTY_KEYS.API_TOKEN)
+ * dari Script Properties. Dipakai oleh apps-script/api/App.gs untuk
+ * menolak request yang tidak menyertakan token sebelum request diproses
+ * lebih jauh.
+ *
+ * @return {string} Token API.
+ * @throws {Error} Jika Script Property API_TOKEN belum diset.
+ */
+function getApiToken() {
+  var token = PropertiesService.getScriptProperties()
+    .getProperty(CONFIG.SCRIPT_PROPERTY_KEYS.API_TOKEN);
+
+  if (!token) {
+    throw new Error(
+      'Config.getApiToken: Script Property "' +
+      CONFIG.SCRIPT_PROPERTY_KEYS.API_TOKEN +
+      '" belum diset. Set nilainya melalui Project Settings > Script Properties ' +
+      'sebelum menjalankan sistem.'
+    );
+  }
+
+  return token;
+}
+
+/**
  * Membuka Spreadsheet database sistem berdasarkan Spreadsheet ID yang
  * dikonfigurasi pada Script Properties.
  *
@@ -177,8 +204,7 @@ function getSpreadsheet() {
 }
 
 
-===== FILE: core/DatabaseService.gs =====
-
+===== FILE: apps-script/core/DatabaseService.gs =====
 /**
  * DatabaseService.gs
  *
@@ -475,137 +501,7 @@ function updateRowById(sheetName, idColumn, idValue, updates) {
 }
 
 
-===== FILE: core/UtilityService.gs =====
-
-/**
- * UtilityService.gs
- *
- * Kumpulan fungsi bantu lintas domain yang tidak spesifik terhadap satu
- * domain bisnis tertentu: format timestamp, validasi umum, dan struktur
- * response standar. Modul ini dapat digunakan oleh seluruh layer lain
- * (Database Access, Sequence Service, Domain Services) dan hanya
- * bergantung pada core/Config.gs (untuk TIMEZONE) beserta layanan bawaan
- * Apps Script (Utilities).
- *
- * Dependency: core/Config.gs (CONFIG.TIMEZONE)
- *
- * Referensi: docs/ARCHITECTURE.md (bagian CORE — Utility)
- */
-
-/**
- * Memformat objek Date menjadi string timestamp ISO 8601 sesuai timezone
- * resmi sistem (Asia/Makassar, lihat CONFIG.TIMEZONE).
- *
- * @param {Date} date Objek tanggal yang akan diformat.
- * @return {string} Timestamp terformat, mis. "2026-08-30T14:00:00+08:00".
- * @throws {Error} Jika "date" bukan objek Date yang valid.
- */
-function formatTimestamp(date) {
-  if (!(date instanceof Date) || isNaN(date.getTime())) {
-    throw new Error('UtilityService.formatTimestamp: "date" harus berupa objek Date yang valid.');
-  }
-  return Utilities.formatDate(date, CONFIG.TIMEZONE, "yyyy-MM-dd'T'HH:mm:ssXXX");
-}
-
-/**
- * Mengambil timestamp saat ini dalam format standar sistem.
- *
- * @return {string} Timestamp saat ini, sesuai format formatTimestamp().
- */
-function nowTimestamp() {
-  return formatTimestamp(new Date());
-}
-
-/**
- * Memeriksa apakah suatu nilai dianggap kosong: null, undefined, atau
- * string kosong setelah di-trim (whitespace saja dianggap kosong).
- *
- * @param {*} value Nilai yang akan diperiksa.
- * @return {boolean} true jika nilai dianggap kosong.
- */
-function isEmpty(value) {
-  if (value === null || value === undefined) {
-    return true;
-  }
-  if (typeof value === 'string') {
-    return value.trim().length === 0;
-  }
-  return false;
-}
-
-/**
- * Menormalisasi teks untuk keperluan perbandingan (mis. pengecekan
- * duplikasi nama/email tanpa mempermasalahkan huruf besar/kecil atau
- * spasi berlebih di awal/akhir). TIDAK mengubah data yang disimpan,
- * hanya digunakan untuk perbandingan.
- *
- * @param {*} value Nilai yang akan dinormalisasi.
- * @return {string} Teks dalam huruf kecil tanpa spasi di awal/akhir, atau
- *   string kosong jika value bukan string/kosong.
- */
-function normalizeText(value) {
-  if (typeof value !== 'string') {
-    return '';
-  }
-  return value.trim().toLowerCase();
-}
-
-/**
- * Memvalidasi format alamat email secara umum (bukan verifikasi
- * keberadaan email, hanya validasi format).
- *
- * @param {string} email Alamat email yang akan divalidasi.
- * @return {boolean} true jika format email valid.
- */
-function isValidEmail(email) {
-  if (typeof email !== 'string') {
-    return false;
-  }
-  var emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailPattern.test(email.trim());
-}
-
-/**
- * Membuat struktur response sukses yang seragam, digunakan sebagai bentuk
- * keluaran standar seluruh fungsi backend yang dipanggil frontend.
- *
- * @param {*} [data] Data hasil operasi. Default null jika tidak diisi.
- * @return {{success: boolean, data: *, error: null}} Objek response.
- */
-function createSuccessResponse(data) {
-  return {
-    success: true,
-    data: data !== undefined ? data : null,
-    error: null
-  };
-}
-
-/**
- * Membuat struktur response gagal yang seragam, digunakan sebagai bentuk
- * keluaran standar saat terjadi kesalahan pada fungsi backend.
- *
- * @param {string} message Pesan kesalahan yang jelas untuk pengguna/klien.
- * @param {*} [details] Detail tambahan mengenai kesalahan (opsional).
- * @return {{success: boolean, data: null, error: Object}} Objek response.
- * @throws {Error} Jika "message" tidak diisi atau bukan string.
- */
-function createErrorResponse(message, details) {
-  if (!message || typeof message !== 'string') {
-    throw new Error('UtilityService.createErrorResponse: "message" wajib diisi dan bertipe string.');
-  }
-  return {
-    success: false,
-    data: null,
-    error: {
-      message: message,
-      details: details !== undefined ? details : null
-    }
-  };
-}
-
-
-===== FILE: core/SequenceService.gs =====
-
+===== FILE: apps-script/core/SequenceService.gs =====
 /**
  * SequenceService.gs
  *
@@ -849,8 +745,512 @@ function generateReportNumber() {
 }
 
 
-===== FILE: users/UserService.gs =====
+===== FILE: apps-script/core/UtilityService.gs =====
+/**
+ * UtilityService.gs
+ *
+ * Kumpulan fungsi bantu lintas domain yang tidak spesifik terhadap satu
+ * domain bisnis tertentu: format timestamp, validasi umum, dan struktur
+ * response standar. Modul ini dapat digunakan oleh seluruh layer lain
+ * (Database Access, Sequence Service, Domain Services) dan hanya
+ * bergantung pada core/Config.gs (untuk TIMEZONE) beserta layanan bawaan
+ * Apps Script (Utilities).
+ *
+ * Dependency: core/Config.gs (CONFIG.TIMEZONE)
+ *
+ * Referensi: docs/ARCHITECTURE.md (bagian CORE — Utility)
+ */
 
+/**
+ * Memformat objek Date menjadi string timestamp ISO 8601 sesuai timezone
+ * resmi sistem (Asia/Makassar, lihat CONFIG.TIMEZONE).
+ *
+ * @param {Date} date Objek tanggal yang akan diformat.
+ * @return {string} Timestamp terformat, mis. "2026-08-30T14:00:00+08:00".
+ * @throws {Error} Jika "date" bukan objek Date yang valid.
+ */
+function formatTimestamp(date) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    throw new Error('UtilityService.formatTimestamp: "date" harus berupa objek Date yang valid.');
+  }
+  return Utilities.formatDate(date, CONFIG.TIMEZONE, "yyyy-MM-dd'T'HH:mm:ssXXX");
+}
+
+/**
+ * Mengambil timestamp saat ini dalam format standar sistem.
+ *
+ * @return {string} Timestamp saat ini, sesuai format formatTimestamp().
+ */
+function nowTimestamp() {
+  return formatTimestamp(new Date());
+}
+
+/**
+ * Memeriksa apakah suatu nilai dianggap kosong: null, undefined, atau
+ * string kosong setelah di-trim (whitespace saja dianggap kosong).
+ *
+ * @param {*} value Nilai yang akan diperiksa.
+ * @return {boolean} true jika nilai dianggap kosong.
+ */
+function isEmpty(value) {
+  if (value === null || value === undefined) {
+    return true;
+  }
+  if (typeof value === 'string') {
+    return value.trim().length === 0;
+  }
+  return false;
+}
+
+/**
+ * Menormalisasi teks untuk keperluan perbandingan (mis. pengecekan
+ * duplikasi nama/email tanpa mempermasalahkan huruf besar/kecil atau
+ * spasi berlebih di awal/akhir). TIDAK mengubah data yang disimpan,
+ * hanya digunakan untuk perbandingan.
+ *
+ * @param {*} value Nilai yang akan dinormalisasi.
+ * @return {string} Teks dalam huruf kecil tanpa spasi di awal/akhir, atau
+ *   string kosong jika value bukan string/kosong.
+ */
+function normalizeText(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.trim().toLowerCase();
+}
+
+/**
+ * Memvalidasi format alamat email secara umum (bukan verifikasi
+ * keberadaan email, hanya validasi format).
+ *
+ * @param {string} email Alamat email yang akan divalidasi.
+ * @return {boolean} true jika format email valid.
+ */
+function isValidEmail(email) {
+  if (typeof email !== 'string') {
+    return false;
+  }
+  var emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailPattern.test(email.trim());
+}
+
+/**
+ * Membuat struktur response sukses yang seragam, digunakan sebagai bentuk
+ * keluaran standar seluruh fungsi backend yang dipanggil frontend.
+ *
+ * @param {*} [data] Data hasil operasi. Default null jika tidak diisi.
+ * @return {{success: boolean, data: *, error: null}} Objek response.
+ */
+function createSuccessResponse(data) {
+  return {
+    success: true,
+    data: data !== undefined ? data : null,
+    error: null
+  };
+}
+
+/**
+ * Membuat struktur response gagal yang seragam, digunakan sebagai bentuk
+ * keluaran standar saat terjadi kesalahan pada fungsi backend.
+ *
+ * @param {string} message Pesan kesalahan yang jelas untuk pengguna/klien.
+ * @param {*} [details] Detail tambahan mengenai kesalahan (opsional).
+ * @return {{success: boolean, data: null, error: Object}} Objek response.
+ * @throws {Error} Jika "message" tidak diisi atau bukan string.
+ */
+function createErrorResponse(message, details) {
+  if (!message || typeof message !== 'string') {
+    throw new Error('UtilityService.createErrorResponse: "message" wajib diisi dan bertipe string.');
+  }
+  return {
+    success: false,
+    data: null,
+    error: {
+      message: message,
+      details: details !== undefined ? details : null
+    }
+  };
+}
+
+
+===== FILE: apps-script/auth/AuthService.gs =====
+/**
+ * AuthService.gs
+ *
+ * Autentikasi berbasis username(email)/password + sesi bertoken untuk
+ * SIGAP SARPRAS — MENGGANTIKAN model lama (`apps-script/api/AuthContext.gs`
+ * versi PHASE 4.5, `Session.getActiveUser()`/SSO Google Workspace). Alasan
+ * penggantian: PHASE 4.5 hanya bisa jalan ketika HTML disajikan LANGSUNG
+ * oleh Apps Script sendiri (HtmlService + google.script.run) — begitu
+ * frontend dipindah ke hosting terpisah (lihat `frontend/`, dipanggil lewat
+ * `fetch()` cross-origin ke Web App JSON API di `apps-script/api/App.gs`),
+ * `Session.getActiveUser()` tidak lagi bisa diandalkan untuk mengidentifikasi
+ * pemanggil. Pola ini sengaja meniru arsitektur SIGAP (aplikasi sekolah
+ * lain, lihat repo `Sigap-app`, TIDAK diubah oleh perubahan ini): login
+ * password + sesi bertoken tersimpan di `CacheService`, bukan SSO.
+ *
+ * KONSEKUENSI PENTING: karena akses Web App tidak lagi bergantung pada sesi
+ * Google, `apps-script/appsscript.json` diubah mengikuti (`webapp.executeAs:
+ * "USER_DEPLOYING"`, `webapp.access: "ANYONE_ANONYMOUS"`) — siapa pun dapat
+ * mencapai URL Web App, dan SATU-SATUNYA gerbang keamanan sesungguhnya
+ * adalah token API (`api/App.gs` checkToken_()) + login/sesi pada modul
+ * ini. Lihat catatan pada `apps-script/appsscript.json` dan
+ * `docs/ARCHITECTURE.md`.
+ *
+ * SCHEMA CHANGE (additive, tidak menyentuh data lama): `01_users` mendapat
+ * dua kolom baru, `password_hash` dan `password_salt` — lihat
+ * `docs/DATABASE_SCHEMA.md`. Baris pengguna LAMA (dibuat sebelum perubahan
+ * ini) memiliki kedua kolom tersebut KOSONG — pengguna itu TIDAK BISA login
+ * sampai seorang ADMIN menetapkan password awal lewat setPassword(). Ini
+ * disengaja (tidak ada migrasi password otomatis yang aman dilakukan dari
+ * kode) — lihat docs/DATABASE_SETUP.md untuk langkah bootstrap admin
+ * pertama.
+ *
+ * Modul ini TETAP mematuhi docs/ARCHITECTURE.md bagian 4 (Aturan Akses
+ * Database) — seluruh akses ke sheet 01_users lewat core/DatabaseService.gs,
+ * tidak ada pemanggilan SpreadsheetApp langsung. Modul ini sengaja TERPISAH
+ * dari apps-script/users/UserService.gs (yang secara eksplisit menyatakan
+ * "TIDAK ADA autentikasi, TIDAK ADA password/credential apa pun di sini")
+ * agar tanggung jawab data-pengguna dan tanggung jawab autentikasi tidak
+ * bercampur dalam satu modul.
+ *
+ * SESSION: disimpan di CacheService.getScriptCache(), BUKAN sheet baru —
+ * sesi bersifat sementara (habis dalam hitungan jam) dan tidak perlu
+ * riwayat permanen, sama seperti pertimbangan yang sama di aplikasi SIGAP.
+ * CacheService.put() punya batas keras 21600 detik (6 jam) per pemanggilan
+ * — SESSION_TTL_SECONDS_ mengikuti batas itu. Agar entri cache yang sering
+ * dipakai tidak ter-evict lebih awal dari batas itu (Apps Script tidak
+ * menjamin retensi penuh hingga TTL), getSessionUser() MENULIS ULANG
+ * (re-put) entri pada setiap pemanggilan yang berhasil — TAPI sisa umur
+ * sesi selalu dihitung ulang dari loginAt yang tersimpan DI DALAM record,
+ * bukan dari TTL cache itu sendiri, sehingga sesi TIDAK PERNAH diperpanjang
+ * melebihi 6 jam sejak login walau dipakai terus-menerus.
+ *
+ * RATE LIMITING: login gagal dibatasi secara GLOBAL (bukan per akun) dalam
+ * jendela tetap 5 menit, mengikuti pola yang sama dengan yang dipakai
+ * aplikasi SIGAP untuk alasan yang sama — pada titik percobaan login,
+ * sistem belum tahu apakah percobaan itu benar-benar milik satu akun
+ * tertentu (email bisa saja salah/tidak terdaftar).
+ *
+ * Dependency:
+ * - core/Config.gs (CONFIG.SHEETS.USERS)
+ * - core/DatabaseService.gs (getRowById, updateRowById)
+ * - core/UtilityService.gs (isEmpty, isValidEmail, nowTimestamp)
+ * - apps-script/users/UserService.gs (getUserByEmail)
+ * - Google Apps Script bawaan: CacheService, Utilities, LockService
+ *
+ * Referensi: docs/DATABASE_SCHEMA.md (01_users), docs/DATABASE_SETUP.md
+ */
+
+/** Masa berlaku sesi, dalam detik — batas keras CacheService.put(). @private */
+var AUTH_SESSION_TTL_SECONDS_ = 21600; // 6 jam
+/** Panjang minimum password yang diterima. @private */
+var AUTH_MIN_PASSWORD_LENGTH_ = 8;
+/** Jendela rate limit percobaan login gagal, dalam detik. @private */
+var AUTH_LOGIN_RATE_WINDOW_SECONDS_ = 300; // 5 menit
+/** Batas jumlah percobaan login gagal dalam satu jendela. @private */
+var AUTH_LOGIN_RATE_MAX_FAILURES_ = 15;
+/** Key CacheService untuk counter rate limit login. @private */
+var AUTH_LOGIN_RATE_CACHE_KEY_ = 'auth_login_failures';
+/** Prefix key CacheService untuk record sesi. @private */
+var AUTH_SESSION_CACHE_PREFIX_ = 'auth_session_';
+
+/**
+ * Menghasilkan salt acak untuk satu password.
+ * @return {string} Salt (UUID v4).
+ * @private
+ */
+function authGenerateSalt_() {
+  return Utilities.getUuid();
+}
+
+/**
+ * Melakukan hashing satu password dengan salt tertentu (SHA-256).
+ * @param {string} password Password polos.
+ * @param {string} salt Salt milik pengguna.
+ * @return {string} Hash dalam bentuk heksadesimal.
+ * @private
+ */
+function authHashPassword_(password, salt) {
+  var digestBytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    salt + ':' + password,
+    Utilities.Charset.UTF_8
+  );
+  return digestBytes.map(function (b) {
+    var v = (b < 0 ? b + 256 : b).toString(16);
+    return v.length === 1 ? '0' + v : v;
+  }).join('');
+}
+
+/**
+ * Memvalidasi kekuatan minimum password baru.
+ * @param {string} password Password yang diperiksa.
+ * @throws {Error} Jika password kosong atau lebih pendek dari
+ *   AUTH_MIN_PASSWORD_LENGTH_.
+ * @private
+ */
+function authValidatePasswordStrength_(password) {
+  if (isEmpty(password)) {
+    throw new Error('AuthService: password wajib diisi.');
+  }
+  if (password.length < AUTH_MIN_PASSWORD_LENGTH_) {
+    throw new Error(
+      'AuthService: password minimal ' + AUTH_MIN_PASSWORD_LENGTH_ + ' karakter.'
+    );
+  }
+}
+
+/**
+ * Menetapkan (membuat atau mengganti) password seorang pengguna. Dipanggil
+ * oleh admin untuk bootstrap awal / reset password, ATAU oleh pengguna itu
+ * sendiri lewat changePassword() setelah password lama diverifikasi lebih
+ * dulu — fungsi ini sendiri TIDAK memeriksa password lama, pemanggil
+ * bertanggung jawab atas otorisasi (lihat apps-script/api/AuthApi.gs).
+ *
+ * @param {string} userId user_id target (01_users).
+ * @param {string} newPassword Password baru (plain text, akan di-hash).
+ * @return {Object} Baris pengguna setelah password diperbarui (tanpa
+ *   password_hash/password_salt pada objek kembalian — lihat authSanitizeUser_).
+ * @throws {Error} Jika userId kosong, pengguna tidak ditemukan, atau
+ *   password baru tidak memenuhi kekuatan minimum.
+ */
+function setPassword(userId, newPassword) {
+  if (isEmpty(userId)) {
+    throw new Error('AuthService.setPassword: "userId" wajib diisi.');
+  }
+  authValidatePasswordStrength_(newPassword);
+
+  var user = getRowById(CONFIG.SHEETS.USERS, 'user_id', userId);
+  if (!user) {
+    throw new Error('AuthService.setPassword: Pengguna tidak ditemukan: "' + userId + '".');
+  }
+
+  var salt = authGenerateSalt_();
+  var hash = authHashPassword_(newPassword, salt);
+
+  var updated = updateRowById(CONFIG.SHEETS.USERS, 'user_id', userId, {
+    password_hash: hash,
+    password_salt: salt,
+    updated_at: nowTimestamp()
+  });
+
+  return authSanitizeUser_(updated);
+}
+
+/**
+ * Melakukan login: memverifikasi email+password, membuat sesi baru bila
+ * berhasil. Dibatasi rate limit global (lihat header file).
+ *
+ * @param {string} email Email pengguna (identitas login, sama seperti 01_users.email).
+ * @param {string} password Password polos.
+ * @return {{token: string, expiresAt: string, user: Object}} Sesi baru + data pengguna (tanpa hash/salt).
+ * @throws {Error} Jika rate limit tercapai, email/password kosong, akun
+ *   tidak ditemukan/tidak aktif, akun belum punya password (butuh admin
+ *   men-set lebih dulu), atau password salah.
+ */
+function login(email, password) {
+  if (authIsLoginRateLimited_()) {
+    throw new Error(
+      'AuthService.login: Terlalu banyak percobaan login gagal. Coba lagi setelah beberapa menit.'
+    );
+  }
+  if (isEmpty(email) || isEmpty(password)) {
+    authRecordLoginFailure_();
+    throw new Error('AuthService.login: Email dan password wajib diisi.');
+  }
+
+  var user = getUserByEmail(email);
+  if (!user || user.is_active !== true) {
+    authRecordLoginFailure_();
+    throw new Error('AuthService.login: Email atau password salah.');
+  }
+  if (isEmpty(user.password_hash) || isEmpty(user.password_salt)) {
+    authRecordLoginFailure_();
+    throw new Error(
+      'AuthService.login: Akun ini belum memiliki password. Hubungi admin untuk menetapkan password awal.'
+    );
+  }
+
+  var computedHash = authHashPassword_(password, user.password_salt);
+  if (computedHash !== user.password_hash) {
+    authRecordLoginFailure_();
+    throw new Error('AuthService.login: Email atau password salah.');
+  }
+
+  return authCreateSession_(user);
+}
+
+/**
+ * Mengakhiri satu sesi (menghapusnya dari cache). Idempotent — memanggil
+ * dengan token yang sudah tidak valid/tidak ada bukan error.
+ *
+ * @param {string} token Token sesi yang diakhiri.
+ */
+function logout(token) {
+  if (isEmpty(token)) {
+    return;
+  }
+  CacheService.getScriptCache().remove(AUTH_SESSION_CACHE_PREFIX_ + token);
+}
+
+/**
+ * Mengganti password milik pengguna yang sedang login sendiri (self-service)
+ * — memverifikasi password lama lebih dulu, BEDA dari setPassword() yang
+ * dipakai admin untuk reset tanpa perlu tahu password lama.
+ *
+ * @param {string} userId user_id pengguna yang mengganti password (dari sesi aktif).
+ * @param {string} oldPassword Password lama, wajib cocok.
+ * @param {string} newPassword Password baru.
+ * @return {Object} Baris pengguna setelah password diperbarui (tersanitasi).
+ * @throws {Error} Jika pengguna tidak ditemukan, password lama salah/akun
+ *   belum punya password, atau password baru tidak memenuhi kekuatan minimum.
+ */
+function changePassword(userId, oldPassword, newPassword) {
+  if (isEmpty(userId)) {
+    throw new Error('AuthService.changePassword: "userId" wajib diisi.');
+  }
+  var user = getRowById(CONFIG.SHEETS.USERS, 'user_id', userId);
+  if (!user) {
+    throw new Error('AuthService.changePassword: Pengguna tidak ditemukan: "' + userId + '".');
+  }
+  if (isEmpty(user.password_hash) || isEmpty(user.password_salt)) {
+    throw new Error('AuthService.changePassword: Akun ini belum memiliki password. Hubungi admin.');
+  }
+  if (isEmpty(oldPassword) || authHashPassword_(oldPassword, user.password_salt) !== user.password_hash) {
+    throw new Error('AuthService.changePassword: Password lama salah.');
+  }
+
+  return setPassword(userId, newPassword);
+}
+
+/**
+ * Mengambil data pengguna pemilik suatu token sesi yang masih berlaku.
+ * Memperbarui (re-put) entri cache agar tidak ter-evict lebih awal, TANPA
+ * memperpanjang umur sesi melebihi 6 jam sejak login — lihat catatan
+ * SESSION pada header file.
+ *
+ * @param {string} token Token sesi.
+ * @return {Object|null} Data pengguna (tersanitasi) pemilik sesi, atau null
+ *   jika token kosong/tidak ditemukan/sudah kedaluwarsa.
+ */
+function getSessionUser(token) {
+  if (isEmpty(token)) {
+    return null;
+  }
+
+  var cache = CacheService.getScriptCache();
+  var cacheKey = AUTH_SESSION_CACHE_PREFIX_ + token;
+  var raw = cache.get(cacheKey);
+  if (!raw) {
+    return null;
+  }
+
+  var record;
+  try {
+    record = JSON.parse(raw);
+  } catch (e) {
+    cache.remove(cacheKey);
+    return null;
+  }
+
+  var elapsedSeconds = (Date.now() - record.loginAtMs) / 1000;
+  var remainingSeconds = AUTH_SESSION_TTL_SECONDS_ - elapsedSeconds;
+  if (remainingSeconds <= 0) {
+    cache.remove(cacheKey);
+    return null;
+  }
+
+  cache.put(cacheKey, raw, Math.ceil(remainingSeconds));
+  return record.user;
+}
+
+/**
+ * Membuat sesi baru untuk satu pengguna yang sudah berhasil diverifikasi
+ * (dipanggil hanya oleh login()).
+ *
+ * @param {Object} user Baris pengguna (01_users) lengkap.
+ * @return {{token: string, expiresAt: string, user: Object}}
+ * @private
+ */
+function authCreateSession_(user) {
+  var token = Utilities.getUuid();
+  var loginAtMs = Date.now();
+  var sanitized = authSanitizeUser_(user);
+
+  var record = {
+    user: sanitized,
+    loginAtMs: loginAtMs
+  };
+
+  CacheService.getScriptCache().put(
+    AUTH_SESSION_CACHE_PREFIX_ + token,
+    JSON.stringify(record),
+    AUTH_SESSION_TTL_SECONDS_
+  );
+
+  return {
+    token: token,
+    expiresAt: formatTimestamp(new Date(loginAtMs + AUTH_SESSION_TTL_SECONDS_ * 1000)),
+    user: sanitized
+  };
+}
+
+/**
+ * Menghapus field kredensial (password_hash/password_salt) dari objek
+ * pengguna sebelum dikirim ke client mana pun — TIDAK PERNAH mengirim hash
+ * atau salt password ke frontend, walau formatnya sudah bukan plain text.
+ *
+ * @param {Object} user Baris pengguna (01_users) lengkap.
+ * @return {Object} Salinan objek pengguna tanpa password_hash/password_salt.
+ * @private
+ */
+function authSanitizeUser_(user) {
+  var sanitized = {};
+  Object.keys(user).forEach(function (key) {
+    if (key !== 'password_hash' && key !== 'password_salt') {
+      sanitized[key] = user[key];
+    }
+  });
+  return sanitized;
+}
+
+/**
+ * Memeriksa apakah jumlah percobaan login gagal global dalam jendela
+ * waktu berjalan sudah mencapai batas.
+ * @return {boolean} true jika rate limit tercapai.
+ * @private
+ */
+function authIsLoginRateLimited_() {
+  var cache = CacheService.getScriptCache();
+  var raw = cache.get(AUTH_LOGIN_RATE_CACHE_KEY_);
+  var count = raw ? Number(raw) || 0 : 0;
+  return count >= AUTH_LOGIN_RATE_MAX_FAILURES_;
+}
+
+/**
+ * Menambah counter percobaan login gagal global. Menggunakan LockService
+ * agar counter tidak salah hitung akibat request paralel.
+ * @private
+ */
+function authRecordLoginFailure_() {
+  var lock = LockService.getScriptLock();
+  var lockAcquired = lock.tryLock(5000);
+  if (!lockAcquired) {
+    return;
+  }
+  try {
+    var cache = CacheService.getScriptCache();
+    var raw = cache.get(AUTH_LOGIN_RATE_CACHE_KEY_);
+    var count = raw ? Number(raw) || 0 : 0;
+    cache.put(AUTH_LOGIN_RATE_CACHE_KEY_, String(count + 1), AUTH_LOGIN_RATE_WINDOW_SECONDS_);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+
+===== FILE: apps-script/users/UserService.gs =====
 /**
  * UserService.gs
  *
@@ -1109,8 +1509,7 @@ function userIsEmailTaken_(email, excludeUserId) {
 }
 
 
-===== FILE: master-data/LocationService.gs =====
-
+===== FILE: apps-script/master-data/LocationService.gs =====
 /**
  * LocationService.gs
  *
@@ -1404,8 +1803,7 @@ function locationRecalculateDescendantPaths_(locationId, newPath) {
 }
 
 
-===== FILE: master-data/CategoryService.gs =====
-
+===== FILE: apps-script/master-data/CategoryService.gs =====
 /**
  * CategoryService.gs
  *
@@ -1602,8 +2000,7 @@ function categoryIsNameTakenByActiveCategory_(categoryName, excludeCategoryId) {
 }
 
 
-===== FILE: master-data/FacilityService.gs =====
-
+===== FILE: apps-script/master-data/FacilityService.gs =====
 /**
  * FacilityService.gs
  *
@@ -1779,8 +2176,7 @@ function facilityValidateActiveCategory_(categoryId) {
 }
 
 
-===== FILE: master-data/OwnerService.gs =====
-
+===== FILE: apps-script/master-data/OwnerService.gs =====
 /**
  * OwnerService.gs
  *
@@ -1958,8 +2354,7 @@ function ownerIsNameTakenByActiveOwner_(ownerName, excludeOwnerId) {
 }
 
 
-===== FILE: reports/ReportHistoryService.gs =====
-
+===== FILE: apps-script/reports/ReportHistoryService.gs =====
 /**
  * ReportHistoryService.gs
  *
@@ -2074,8 +2469,7 @@ function listReportHistory(reportId) {
 }
 
 
-===== FILE: reports/ReportService.gs =====
-
+===== FILE: apps-script/reports/ReportService.gs =====
 /**
  * ReportService.gs
  *
@@ -2603,8 +2997,7 @@ function reportValidateExistingReport_(reportId) {
 }
 
 
-===== FILE: reports/ReportWorkflowService.gs =====
-
+===== FILE: apps-script/reports/ReportWorkflowService.gs =====
 /**
  * ReportWorkflowService.gs
  *
@@ -2750,36 +3143,38 @@ function changeReportStatus(reportId, newStatus, options) {
 }
 
 
-===== FILE: api/AuthContext.gs =====
-
+===== FILE: apps-script/api/AuthContext.gs =====
 /**
  * AuthContext.gs
  *
- * Identifikasi pengguna pemanggil Web App berdasarkan sesi Google aktif,
- * dan pemeriksaan peran (role) MINIMAL untuk aksi yang sensitif. Ini
- * BUKAN sistem autentikasi (tidak ada password/credential apa pun di
- * sini — SIGAP SARPRAS mengandalkan sesi Google Workspace yang sudah ada,
- * lihat apps-script/appsscript.json "webapp.executeAs": "USER_ACCESSING").
+ * Identifikasi pengguna pemanggil Web App berdasarkan TOKEN SESI (lihat
+ * apps-script/auth/AuthService.gs) dan pemeriksaan peran (role).
+ *
+ * ================================================================
+ * PERUBAHAN ARSITEKTUR — dari Google SSO ke token sesi
+ * ================================================================
+ * Versi sebelumnya modul ini (PHASE 4.5 — MVP Usability) mengidentifikasi
+ * pemanggil lewat `Session.getActiveUser()` (sesi Google Workspace aktif),
+ * yang HANYA bekerja ketika HTML disajikan langsung oleh Apps Script sendiri
+ * (`HtmlService`, `google.script.run`). Sejak frontend dipindah ke hosting
+ * terpisah (`frontend/`) yang memanggil Web App lewat `fetch()` cross-origin
+ * (lihat `apps-script/api/App.gs`), pengguna diidentifikasi dari TOKEN SESI
+ * yang dikirim client (hasil `AuthService.login()`), bukan lagi dari sesi
+ * Google — lihat `apps-script/auth/AuthService.gs` dan
+ * `apps-script/appsscript.json` (`webapp.executeAs`/`webapp.access`).
  *
  * ================================================================
  * OPEN DESIGN DECISION — Authorization MINIMAL, BUKAN RBAC penuh
  * ================================================================
- * MVP ini hanya menerapkan SATU aturan kasar (coarse-grained), diambil
- * langsung dari contoh yang SUDAH ADA di docs/ARCHITECTURE.md bagian 2
- * REPORT MANAGEMENT ("mis. hanya verifikator yang dapat mengubah status
- * ke VERIFIED"): perubahan status laporan (changeReportStatus) dan
- * penonaktifan laporan (deactivateReport) HANYA dapat dipicu oleh
- * pengguna berperan VERIFIKATOR, OWNER, atau ADMIN — TIDAK dibedakan
- * lebih lanjut per jenis transisi (mis. tidak ada aturan "hanya OWNER
- * terkait yang dapat mengubah ke IN_PROGRESS"), karena aturan sedetail
- * itu belum ditemukan didokumentasikan di mana pun. RBAC penuh per
- * transisi/per peran tetap dijadwalkan PHASE 5 sesuai
- * docs/WORKFLOW.md dan docs/DEVELOPMENT_ROADMAP.md.
+ * Sama seperti versi sebelumnya: perubahan status laporan (changeReportStatus)
+ * dan penonaktifan laporan (deactivateReport) HANYA dapat dipicu oleh
+ * pengguna berperan VERIFIKATOR, OWNER, atau ADMIN — TIDAK dibedakan lebih
+ * lanjut per jenis transisi. RBAC penuh per transisi/per peran tetap
+ * dijadwalkan PHASE 5 sesuai docs/WORKFLOW.md dan docs/DEVELOPMENT_ROADMAP.md.
  *
  * Dependency:
  * - core/UtilityService.gs (isEmpty)
- * - apps-script/users/UserService.gs (getUserByEmail)
- * - Google Apps Script bawaan: Session
+ * - apps-script/auth/AuthService.gs (getSessionUser)
  *
  * Referensi: docs/ARCHITECTURE.md (bagian 2, REPORT MANAGEMENT — Authorization)
  */
@@ -2789,59 +3184,38 @@ function changeReportStatus(reportId, newStatus, options) {
  * (lihat catatan OPEN DESIGN DECISION di header file ini).
  *
  * Sengaja berupa FUNGSI (bukan top-level var) agar tidak bergantung pada
- * urutan file dimuat Google Apps Script (semua file digabung dan kode
- * top-level dijalankan sesuai urutan pada project — jika ini top-level var
- * dan file ini dimuat sebelum core/Config.gs, CONFIG belum terdefinisi).
+ * urutan file dimuat Google Apps Script.
  *
  * @return {Array<string>} Daftar CONFIG.ROLES yang diizinkan.
- * @private
  */
 function getWorkflowAllowedRoles_() {
   return [CONFIG.ROLES.VERIFIKATOR, CONFIG.ROLES.OWNER, CONFIG.ROLES.ADMIN];
 }
 
 /**
- * Mengidentifikasi pengguna SIGAP SARPRAS yang sedang memanggil Web App,
- * berdasarkan email sesi Google aktif (Session.getActiveUser().getEmail()).
- * Pengguna WAJIB sudah terdaftar (01_users) dan berstatus aktif — tidak
- * ada pendaftaran otomatis/self-service di sini.
+ * Mengidentifikasi pengguna SIGAP SARPRAS pemilik suatu token sesi.
  *
- * @return {Object} Baris pengguna (01_users) milik pemanggil.
- * @throws {Error} Jika sesi Google tidak dapat diidentifikasi (mis. akses
- *   anonim/di luar domain yang diizinkan — lihat appsscript.json
- *   "webapp.access"), atau email tersebut belum terdaftar/tidak aktif
- *   pada 01_users.
+ * @param {string} token Token sesi (hasil AuthService.login()).
+ * @return {Object} Data pengguna (tersanitasi, tanpa password_hash/password_salt).
+ * @throws {Error} Jika token kosong, tidak valid, atau sudah kedaluwarsa.
  */
-function getCurrentUserContext_() {
-  var email = Session.getActiveUser().getEmail();
-  if (isEmpty(email)) {
-    throw new Error(
-      'AuthContext.getCurrentUserContext_: Tidak dapat mengidentifikasi email pengguna dari sesi Google aktif. ' +
-      'Pastikan Web App diakses dalam keadaan login Google Workspace yang sesuai (lihat appsscript.json "webapp.access").'
-    );
+function requireSession_(token) {
+  if (isEmpty(token)) {
+    throw new Error('AuthContext.requireSession_: Token sesi wajib disertakan. Silakan login.');
   }
-
-  var user = getUserByEmail(email);
+  var user = getSessionUser(token);
   if (!user) {
-    throw new Error(
-      'AuthContext.getCurrentUserContext_: Email "' + email + '" belum terdaftar sebagai pengguna SIGAP SARPRAS. ' +
-      'Hubungi admin untuk didaftarkan terlebih dahulu.'
-    );
+    throw new Error('AuthContext.requireSession_: Sesi tidak valid atau sudah berakhir. Silakan login kembali.');
   }
-  if (user.is_active !== true) {
-    throw new Error('AuthContext.getCurrentUserContext_: Akun pengguna "' + email + '" tidak aktif.');
-  }
-
   return user;
 }
 
 /**
  * Memastikan userContext memiliki salah satu peran yang diizinkan.
  *
- * @param {Object} userContext Baris pengguna (hasil getCurrentUserContext_()).
+ * @param {Object} userContext Baris pengguna (hasil requireSession_()).
  * @param {Array<string>} allowedRoles Daftar CONFIG.ROLES yang diizinkan.
  * @throws {Error} Jika peran pengguna tidak termasuk allowedRoles.
- * @private
  */
 function requireRole_(userContext, allowedRoles) {
   if (allowedRoles.indexOf(userContext.role) === -1) {
@@ -2853,8 +3227,7 @@ function requireRole_(userContext, allowedRoles) {
 }
 
 
-===== FILE: api/ApiUtil.gs =====
-
+===== FILE: apps-script/api/ApiUtil.gs =====
 /**
  * ApiUtil.gs
  *
@@ -2887,64 +3260,355 @@ function apiRun_(fn) {
 }
 
 
-===== FILE: api/MasterDataApi.gs =====
+===== FILE: apps-script/api/AuthApi.gs =====
+/**
+ * AuthApi.gs
+ *
+ * Fungsi PUBLIK lapisan API untuk login/logout/manajemen password, dipanggil
+ * dari apps-script/api/App.gs (doGet/doPost JSON router). Sama seperti
+ * ReportApi.gs/MasterDataApi.gs — tidak ada logika bisnis di sini, hanya:
+ * (1) identifikasi/otorisasi pemanggil lewat AuthContext.gs (untuk fungsi
+ * yang butuh sesi), (2) meneruskan ke apps-script/auth/AuthService.gs, (3)
+ * membungkus hasil/error lewat ApiUtil.gs.
+ *
+ * apiLogin TIDAK memerlukan token sesi (memang belum ada sesi) — hanya
+ * token API statis yang sudah diperiksa lebih dulu oleh App.gs checkToken_()
+ * sebelum fungsi ini dipanggil.
+ *
+ * Dependency:
+ * - apps-script/api/AuthContext.gs (requireSession_, requireRole_)
+ * - apps-script/api/ApiUtil.gs (apiRun_)
+ * - apps-script/auth/AuthService.gs (login, logout, changePassword, setPassword)
+ * - core/Config.gs (CONFIG.ROLES)
+ */
 
+/**
+ * Login dengan email + password.
+ * @param {string} email
+ * @param {string} password
+ * @return {{success: boolean, data: *, error: ?Object}} data berisi {token, expiresAt, user}.
+ */
+function apiLogin(email, password) {
+  return apiRun_(function () {
+    return login(email, password);
+  });
+}
+
+/**
+ * Logout — mengakhiri sesi milik token yang dikirim.
+ * @param {string} token Token sesi yang diakhiri.
+ * @return {{success: boolean, data: *, error: ?Object}}
+ */
+function apiLogout(token) {
+  return apiRun_(function () {
+    logout(token);
+    return null;
+  });
+}
+
+/**
+ * Mengembalikan data pengguna yang sedang login (untuk ditampilkan di UI
+ * dan menentukan kontrol mana yang ditampilkan).
+ * @param {string} token Token sesi.
+ * @return {{success: boolean, data: *, error: ?Object}}
+ */
+function apiGetCurrentUser(token) {
+  return apiRun_(function () {
+    var user = requireSession_(token);
+    return {
+      user_id: user.user_id,
+      full_name: user.full_name,
+      email: user.email,
+      role: user.role,
+      owner_id: user.owner_id || '',
+      can_manage_workflow: getWorkflowAllowedRoles_().indexOf(user.role) !== -1,
+      is_admin: user.role === CONFIG.ROLES.ADMIN
+    };
+  });
+}
+
+/**
+ * Mengganti password milik pengguna yang sedang login sendiri.
+ * @param {string} token Token sesi.
+ * @param {string} oldPassword Password lama.
+ * @param {string} newPassword Password baru.
+ * @return {{success: boolean, data: *, error: ?Object}}
+ */
+function apiChangePassword(token, oldPassword, newPassword) {
+  return apiRun_(function () {
+    var user = requireSession_(token);
+    return changePassword(user.user_id, oldPassword, newPassword);
+  });
+}
+
+/**
+ * Menetapkan/mereset password milik pengguna lain. HANYA dapat dipanggil
+ * oleh ADMIN — tidak memerlukan password lama (dipakai untuk bootstrap
+ * akun baru maupun reset ketika pengguna lupa password).
+ * @param {string} token Token sesi (milik admin yang melakukan aksi).
+ * @param {string} userId user_id target.
+ * @param {string} newPassword Password baru.
+ * @return {{success: boolean, data: *, error: ?Object}}
+ */
+function apiSetPassword(token, userId, newPassword) {
+  return apiRun_(function () {
+    var user = requireSession_(token);
+    requireRole_(user, [CONFIG.ROLES.ADMIN]);
+    return setPassword(userId, newPassword);
+  });
+}
+
+
+===== FILE: apps-script/api/UserApi.gs =====
+/**
+ * UserApi.gs
+ *
+ * Fungsi PUBLIK lapisan API untuk manajemen data pengguna (01_users),
+ * dipanggil dari apps-script/api/App.gs. Tidak ada logika bisnis di sini —
+ * hanya identifikasi/otorisasi pemanggil + pass-through ke
+ * apps-script/users/UserService.gs + pembungkusan response.
+ *
+ * SELURUH fungsi di sini HANYA dapat dipanggil oleh ADMIN — data pengguna
+ * (termasuk email/role setiap warga sekolah) tidak ditampilkan ke peran
+ * lain. Pengecualian: apiGetCurrentUser (AuthApi.gs) yang hanya
+ * mengembalikan data pengguna itu sendiri, bukan daftar seluruh pengguna.
+ *
+ * setPassword (AuthApi.gs) TIDAK ada di sini secara sengaja — tetap satu
+ * pintu di apps-script/auth/AuthService.gs supaya password tidak pernah
+ * lewat jalur lain.
+ *
+ * Dependency:
+ * - core/Config.gs (CONFIG.ROLES)
+ * - apps-script/api/AuthContext.gs (requireSession_, requireRole_)
+ * - apps-script/api/ApiUtil.gs (apiRun_)
+ * - apps-script/users/UserService.gs (createUser, updateUser, deactivateUser, listActiveUsers)
+ */
+
+/**
+ * Mengambil daftar seluruh pengguna aktif. ADMIN saja.
+ * @param {string} token Token sesi.
+ * @return {{success: boolean, data: *, error: ?Object}}
+ */
+function apiListUsers(token) {
+  return apiRun_(function () {
+    var user = requireSession_(token);
+    requireRole_(user, [CONFIG.ROLES.ADMIN]);
+    return listActiveUsers();
+  });
+}
+
+/**
+ * Membuat pengguna baru. ADMIN saja. Pengguna baru TIDAK memiliki password
+ * — panggil apiSetPassword (AuthApi.gs) secara terpisah setelah ini untuk
+ * menetapkan password awal.
+ * @param {string} token Token sesi.
+ * @param {Object} payload Lihat UserService.createUser.
+ * @return {{success: boolean, data: *, error: ?Object}}
+ */
+function apiCreateUser(token, payload) {
+  return apiRun_(function () {
+    var user = requireSession_(token);
+    requireRole_(user, [CONFIG.ROLES.ADMIN]);
+    return createUser(payload || {});
+  });
+}
+
+/**
+ * Memperbarui data pengguna (bukan password/is_active). ADMIN saja.
+ * @param {string} token Token sesi.
+ * @param {string} userId user_id target.
+ * @param {Object} updates Lihat UserService.updateUser.
+ * @return {{success: boolean, data: *, error: ?Object}}
+ */
+function apiUpdateUser(token, userId, updates) {
+  return apiRun_(function () {
+    var user = requireSession_(token);
+    requireRole_(user, [CONFIG.ROLES.ADMIN]);
+    return updateUser(userId, updates || {});
+  });
+}
+
+/**
+ * Menonaktifkan pengguna (soft delete). ADMIN saja.
+ * @param {string} token Token sesi.
+ * @param {string} userId user_id target.
+ * @return {{success: boolean, data: *, error: ?Object}}
+ */
+function apiDeactivateUser(token, userId) {
+  return apiRun_(function () {
+    var user = requireSession_(token);
+    requireRole_(user, [CONFIG.ROLES.ADMIN]);
+    return deactivateUser(userId);
+  });
+}
+
+
+===== FILE: apps-script/api/MasterDataApi.gs =====
 /**
  * MasterDataApi.gs
  *
- * Fungsi PUBLIK read-only yang dipanggil dari client (Index.html) lewat
- * google.script.run, khusus untuk mengisi pilihan (dropdown) pada form
- * pembuatan laporan (lokasi, kategori). Sama seperti ReportApi.gs — tidak
- * ada logika bisnis di sini, hanya identifikasi pemanggil + pass-through
- * ke Service Layer Master Data yang sudah ada + pembungkusan response.
+ * Fungsi PUBLIK lapisan API untuk data master (lokasi, kategori, fasilitas,
+ * owner), dipanggil dari apps-script/api/App.gs. Tidak ada logika bisnis di
+ * sini — hanya identifikasi/otorisasi pemanggil lewat AuthContext.gs +
+ * pass-through ke Service Layer Master Data yang sudah ada
+ * (apps-script/master-data/) + pembungkusan response lewat ApiUtil.gs.
  *
- * facility_id/owner_id SENGAJA TIDAK diekspos sebagai dropdown pada MVP
- * ini (field opsional pada createReport, lihat apps-script/reports/README.md)
- * — mengurangi kompleksitas form MVP; tetap dapat dikirim manual lewat
- * apiCreateReport() bila dibutuhkan.
+ * BACA (list*) — boleh dipanggil siapa pun yang sedang login (dibutuhkan
+ * untuk mengisi dropdown form laporan oleh SEMUA peran, termasuk SISWA/GURU/
+ * STAF sebagai pelapor).
+ * TULIS (create.../update.../deactivate...) — HANYA ADMIN. Data master
+ * mempengaruhi seluruh sistem (setiap laporan baru merujuknya), sehingga
+ * tidak dibuka ke peran lain pada tahap ini.
  *
  * Dependency:
- * - apps-script/api/AuthContext.gs (getCurrentUserContext_)
+ * - core/Config.gs (CONFIG.ROLES)
+ * - apps-script/api/AuthContext.gs (requireSession_, requireRole_)
  * - apps-script/api/ApiUtil.gs (apiRun_)
- * - apps-script/master-data/LocationService.gs (listActiveLocations)
- * - apps-script/master-data/CategoryService.gs (listActiveCategories)
+ * - apps-script/master-data/LocationService.gs
+ * - apps-script/master-data/CategoryService.gs
+ * - apps-script/master-data/FacilityService.gs
+ * - apps-script/master-data/OwnerService.gs
  */
 
-/**
- * Mengambil daftar lokasi aktif, untuk dropdown form laporan.
- * @return {{success: boolean, data: *, error: ?Object}}
- */
-function apiListLocations() {
+/** @private */
+function masterDataRequireAdmin_(token) {
+  var user = requireSession_(token);
+  requireRole_(user, [CONFIG.ROLES.ADMIN]);
+  return user;
+}
+
+// ---- Locations ----------------------------------------------------------
+
+function apiListLocations(token) {
   return apiRun_(function () {
-    getCurrentUserContext_();
+    requireSession_(token);
     return listActiveLocations();
   });
 }
 
-/**
- * Mengambil daftar kategori aktif, untuk dropdown form laporan.
- * @return {{success: boolean, data: *, error: ?Object}}
- */
-function apiListCategories() {
+function apiCreateLocation(token, payload) {
   return apiRun_(function () {
-    getCurrentUserContext_();
+    masterDataRequireAdmin_(token);
+    return createLocation(payload || {});
+  });
+}
+
+function apiUpdateLocation(token, locationId, updates) {
+  return apiRun_(function () {
+    masterDataRequireAdmin_(token);
+    return updateLocation(locationId, updates || {});
+  });
+}
+
+function apiDeactivateLocation(token, locationId) {
+  return apiRun_(function () {
+    masterDataRequireAdmin_(token);
+    return deactivateLocation(locationId);
+  });
+}
+
+// ---- Categories -----------------------------------------------------------
+
+function apiListCategories(token) {
+  return apiRun_(function () {
+    requireSession_(token);
     return listActiveCategories();
   });
 }
 
+function apiCreateCategory(token, payload) {
+  return apiRun_(function () {
+    masterDataRequireAdmin_(token);
+    return createCategory(payload || {});
+  });
+}
 
-===== FILE: api/ReportApi.gs =====
+function apiUpdateCategory(token, categoryId, updates) {
+  return apiRun_(function () {
+    masterDataRequireAdmin_(token);
+    return updateCategory(categoryId, updates || {});
+  });
+}
 
+function apiDeactivateCategory(token, categoryId) {
+  return apiRun_(function () {
+    masterDataRequireAdmin_(token);
+    return deactivateCategory(categoryId);
+  });
+}
+
+// ---- Facilities -----------------------------------------------------------
+
+function apiListFacilities(token) {
+  return apiRun_(function () {
+    requireSession_(token);
+    return listActiveFacilities();
+  });
+}
+
+function apiCreateFacility(token, payload) {
+  return apiRun_(function () {
+    masterDataRequireAdmin_(token);
+    return createFacility(payload || {});
+  });
+}
+
+function apiUpdateFacility(token, facilityId, updates) {
+  return apiRun_(function () {
+    masterDataRequireAdmin_(token);
+    return updateFacility(facilityId, updates || {});
+  });
+}
+
+function apiDeactivateFacility(token, facilityId) {
+  return apiRun_(function () {
+    masterDataRequireAdmin_(token);
+    return deactivateFacility(facilityId);
+  });
+}
+
+// ---- Owners -----------------------------------------------------------
+
+function apiListOwners(token) {
+  return apiRun_(function () {
+    requireSession_(token);
+    return listActiveOwners();
+  });
+}
+
+function apiCreateOwner(token, payload) {
+  return apiRun_(function () {
+    masterDataRequireAdmin_(token);
+    return createOwner(payload || {});
+  });
+}
+
+function apiUpdateOwner(token, ownerId, updates) {
+  return apiRun_(function () {
+    masterDataRequireAdmin_(token);
+    return updateOwner(ownerId, updates || {});
+  });
+}
+
+function apiDeactivateOwner(token, ownerId) {
+  return apiRun_(function () {
+    masterDataRequireAdmin_(token);
+    return deactivateOwner(ownerId);
+  });
+}
+
+
+===== FILE: apps-script/api/ReportApi.gs =====
 /**
  * ReportApi.gs
  *
- * Fungsi PUBLIK yang dipanggil dari client (Index.html) lewat
- * google.script.run — lapisan entry point sesuai docs/ARCHITECTURE.md
- * ("Google Apps Script — lapisan entry point ... yang menerima permintaan
- * dan meneruskannya ke Service Layer"). Modul ini TIDAK berisi logika
- * bisnis apa pun — hanya: (1) mengidentifikasi pemanggil lewat
- * AuthContext.gs, (2) meneruskan ke apps-script/reports/*.gs, (3)
- * membungkus hasil/errornya lewat ApiUtil.gs.
+ * Fungsi PUBLIK yang dipanggil dari frontend (lihat frontend/, di luar
+ * project Apps Script ini) lewat apps-script/api/App.gs (doGet/doPost JSON
+ * router) — lapisan entry point sesuai docs/ARCHITECTURE.md. Modul ini
+ * TIDAK berisi logika bisnis apa pun — hanya: (1) mengidentifikasi pemanggil
+ * lewat AuthContext.gs (token sesi, BUKAN lagi Session.getActiveUser() —
+ * lihat catatan PERUBAHAN ARSITEKTUR di AuthContext.gs), (2) meneruskan ke
+ * apps-script/reports/*.gs, (3) membungkus hasil/errornya lewat ApiUtil.gs.
  *
  * Setiap fungsi di sini TETAP mematuhi docs/ARCHITECTURE.md bagian 4 —
  * TIDAK memanggil SpreadsheetApp/getSpreadsheet() maupun DatabaseService
@@ -2953,7 +3617,7 @@ function apiListCategories() {
  *
  * Dependency:
  * - core/Config.gs (CONFIG.REPORT_STATUS)
- * - apps-script/api/AuthContext.gs (getCurrentUserContext_, requireRole_,
+ * - apps-script/api/AuthContext.gs (requireSession_, requireRole_,
  *   getWorkflowAllowedRoles_)
  * - apps-script/api/ApiUtil.gs (apiRun_)
  * - apps-script/reports/ReportService.gs (createReport, getReportById,
@@ -2965,33 +3629,15 @@ function apiListCategories() {
  */
 
 /**
- * Mengembalikan data pengguna yang sedang login (untuk ditampilkan di UI
- * dan menentukan kontrol mana yang ditampilkan, mis. tombol ubah status).
+ * Membuat laporan baru. reporter_id SELALU diambil dari sesi aktif (TIDAK
+ * bisa dikirim/dipalsukan dari client).
+ * @param {string} token Token sesi.
+ * @param {Object} payload Field laporan (lihat ReportService.createReport), TANPA reporter_id.
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiGetCurrentUser() {
+function apiCreateReport(token, payload) {
   return apiRun_(function () {
-    var user = getCurrentUserContext_();
-    return {
-      user_id: user.user_id,
-      full_name: user.full_name,
-      email: user.email,
-      role: user.role,
-      can_manage_workflow: getWorkflowAllowedRoles_().indexOf(user.role) !== -1
-    };
-  });
-}
-
-/**
- * Membuat laporan baru. reporter_id SELALU diambil dari sesi Google aktif
- * (TIDAK bisa dikirim/dipalsukan dari client).
- * @param {Object} payload Field laporan (lihat ReportService.createReport),
- *   TANPA reporter_id.
- * @return {{success: boolean, data: *, error: ?Object}}
- */
-function apiCreateReport(payload) {
-  return apiRun_(function () {
-    var user = getCurrentUserContext_();
+    var user = requireSession_(token);
     payload = payload || {};
     return createReport({
       reporter_id: user.user_id,
@@ -3010,12 +3656,13 @@ function apiCreateReport(payload) {
 /**
  * Mengambil daftar laporan aktif. Jika status diisi, hanya laporan dengan
  * status tersebut yang dikembalikan.
+ * @param {string} token Token sesi.
  * @param {string} [status] Salah satu CONFIG.REPORT_STATUS (opsional).
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiListReports(status) {
+function apiListReports(token, status) {
   return apiRun_(function () {
-    getCurrentUserContext_();
+    requireSession_(token);
     if (!status) {
       return listActiveReports();
     }
@@ -3025,12 +3672,13 @@ function apiListReports(status) {
 
 /**
  * Mengambil satu laporan berdasarkan report_id.
+ * @param {string} token Token sesi.
  * @param {string} reportId ID laporan.
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiGetReport(reportId) {
+function apiGetReport(token, reportId) {
   return apiRun_(function () {
-    getCurrentUserContext_();
+    requireSession_(token);
     var report = getReportById(reportId);
     if (!report) {
       throw new Error('Laporan tidak ditemukan: "' + reportId + '".');
@@ -3041,26 +3689,28 @@ function apiGetReport(reportId) {
 
 /**
  * Mengambil riwayat perubahan suatu laporan.
+ * @param {string} token Token sesi.
  * @param {string} reportId ID laporan.
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiListReportHistory(reportId) {
+function apiListReportHistory(token, reportId) {
   return apiRun_(function () {
-    getCurrentUserContext_();
+    requireSession_(token);
     return listReportHistory(reportId);
   });
 }
 
 /**
- * Memperbarui data laporan (bukan status). performed_by SELALU diambil
- * dari sesi Google aktif.
+ * Memperbarui data laporan (bukan status). performed_by SELALU diambil dari
+ * sesi aktif.
+ * @param {string} token Token sesi.
  * @param {string} reportId ID laporan.
  * @param {Object} updates Kolom yang diperbarui (lihat ReportService.updateReport).
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiUpdateReport(reportId, updates) {
+function apiUpdateReport(token, reportId, updates) {
   return apiRun_(function () {
-    var user = getCurrentUserContext_();
+    var user = requireSession_(token);
     updates = updates || {};
     updates.performed_by = user.user_id;
     return updateReport(reportId, updates);
@@ -3069,16 +3719,16 @@ function apiUpdateReport(reportId, updates) {
 
 /**
  * Mengubah status laporan. HANYA dapat dipanggil oleh peran
- * VERIFIKATOR/OWNER/ADMIN (lihat catatan OPEN DESIGN DECISION pada
- * AuthContext.gs). performed_by SELALU diambil dari sesi Google aktif.
+ * VERIFIKATOR/OWNER/ADMIN. performed_by SELALU diambil dari sesi aktif.
+ * @param {string} token Token sesi.
  * @param {string} reportId ID laporan.
  * @param {string} newStatus Status tujuan, salah satu CONFIG.REPORT_STATUS.
  * @param {string} [notes] Catatan tambahan (opsional).
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiChangeReportStatus(reportId, newStatus, notes) {
+function apiChangeReportStatus(token, reportId, newStatus, notes) {
   return apiRun_(function () {
-    var user = getCurrentUserContext_();
+    var user = requireSession_(token);
     requireRole_(user, getWorkflowAllowedRoles_());
     return changeReportStatus(reportId, newStatus, { performed_by: user.user_id, notes: notes });
   });
@@ -3087,12 +3737,13 @@ function apiChangeReportStatus(reportId, newStatus, notes) {
 /**
  * Menonaktifkan laporan (soft delete). HANYA dapat dipanggil oleh peran
  * VERIFIKATOR/OWNER/ADMIN.
+ * @param {string} token Token sesi.
  * @param {string} reportId ID laporan.
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiDeactivateReport(reportId) {
+function apiDeactivateReport(token, reportId) {
   return apiRun_(function () {
-    var user = getCurrentUserContext_();
+    var user = requireSession_(token);
     requireRole_(user, getWorkflowAllowedRoles_());
     return deactivateReport(reportId, user.user_id);
   });
@@ -3100,13 +3751,15 @@ function apiDeactivateReport(reportId) {
 
 /**
  * Mengembalikan urutan status workflow kanonik (untuk UI, mis. dropdown
- * status tujuan) — HANYA untuk kebutuhan tampilan. Legalitas transisi
- * TETAP divalidasi ulang di server oleh ReportWorkflowService.changeReportStatus(),
+ * status tujuan) — HANYA untuk kebutuhan tampilan. Legalitas transisi TETAP
+ * divalidasi ulang di server oleh ReportWorkflowService.changeReportStatus(),
  * client tidak boleh dipercaya untuk memutuskan transisi mana yang sah.
+ * @param {string} token Token sesi.
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiGetReportStatusOptions() {
+function apiGetReportStatusOptions(token) {
   return apiRun_(function () {
+    requireSession_(token);
     return [
       CONFIG.REPORT_STATUS.SUBMITTED,
       CONFIG.REPORT_STATUS.VERIFIED,
@@ -3119,335 +3772,1142 @@ function apiGetReportStatusOptions() {
 }
 
 
-===== FILE: api/App.gs =====
-
+===== FILE: apps-script/api/App.gs =====
 /**
  * App.gs
  *
- * Satu-satunya Web App entry point SIGAP SARPRAS (doGet). Menyajikan
- * apps-script/api/Index.html — sebuah HALAMAN UJI COBA MINIMAL (test
- * harness), BUKAN frontend final PHASE 7 (lihat frontend/README.md dan
- * docs/DEVELOPMENT_ROADMAP.md). Tujuannya HANYA agar Report Engine
- * (PHASE 4) benar-benar dapat dibuka dan diuji oleh pengguna nyata lewat
- * URL Web App, tanpa menunggu pengembangan frontend penuh.
+ * Satu-satunya Web App entry point SIGAP SARPRAS (doGet/doPost) — JSON API
+ * bertoken yang dipanggil dari frontend statis (`frontend/`, di-hosting
+ * TERPISAH dari project Apps Script ini, mis. Vercel/GitHub Pages) lewat
+ * `fetch()`, BUKAN lagi lewat `google.script.run` (yang hanya bekerja untuk
+ * HTML yang disajikan Apps Script sendiri).
  *
- * Interaksi client-server memakai google.script.run (dipanggil langsung
- * dari Index.html) — TIDAK ada routing doPost/REST JSON API terpisah,
- * karena pola ini adalah cara standar Apps Script untuk halaman yang
- * dilayani lewat HtmlService pada project yang sama.
+ * ================================================================
+ * PERUBAHAN ARSITEKTUR (menggantikan PHASE 4.5 MVP Usability)
+ * ================================================================
+ * Versi sebelumnya `doGet()` menyajikan `api/Index.html` (test harness
+ * vanilla HTML/JS memakai `google.script.run`), dan pengguna diidentifikasi
+ * dari sesi Google aktif. File itu (beserta `google.script.run` sebagai pola
+ * komunikasi) SUDAH DIPENSIUNKAN — lihat commit yang menyertai perubahan ini
+ * dan `docs/ARCHITECTURE.md`. Digantikan pola JSON API doGet/doPost + token
+ * sesi (`apps-script/auth/AuthService.gs`), meniru arsitektur aplikasi SIGAP
+ * (`Sigap-app`, TIDAK diubah oleh perubahan ini — lihat `Code.gs` di repo
+ * tersebut untuk pola aslinya).
  *
- * Konfigurasi deployment (siapa yang boleh mengakses, sebagai identitas
- * siapa script dijalankan) ada pada apps-script/appsscript.json
- * ("webapp.executeAs"/"webapp.access") — WAJIB executeAs "USER_ACCESSING"
- * agar Session.getActiveUser() pada AuthContext.gs dapat mengidentifikasi
- * pemanggil.
+ * DUA LAPIS TOKEN, JANGAN TERTUKAR:
+ * 1. `token` (parameter request) — token API STATIS (Script Property
+ *    API_TOKEN, lihat core/Config.gs getApiToken()), dikirim SETIAP request
+ *    (GET maupun POST), diperiksa checkToken_() SEBELUM action apa pun
+ *    diproses. Ini BUKAN autentikasi pengguna — hanya gerbang pertama.
+ * 2. `sessionToken` (parameter aksi, untuk seluruh action KECUALI
+ *    `status`/`login`) — token SESI hasil AuthService.login(), diteruskan
+ *    ke fungsi apps-script/api/*Api.gs yang membutuhkan identitas pemanggil.
  *
- * Dependency: HtmlService (bawaan Apps Script), apps-script/api/Index.html
+ * CORS: frontend WAJIB mengirim body POST dengan Content-Type
+ * `text/plain;charset=utf-8` (BUKAN `application/json`) — Apps Script Web
+ * App tidak mengizinkan header kustom lewat preflight CORS, tapi
+ * `e.postData.contents` di sini tetap diparse sebagai JSON apa pun
+ * Content-Type yang dikirim, jadi body-nya tetap JSON biasa, hanya header
+ * Content-Type-nya yang disamarkan agar browser tidak mengirim preflight
+ * OPTIONS (yang tidak bisa dijawab Apps Script Web App). Lihat
+ * frontend/api.js. CATATAN: perilaku CORS Apps Script Web App belum
+ * diverifikasi end-to-end pada deployment nyata sebagai bagian dari
+ * perubahan ini — WAJIB diuji coba langsung dari frontend yang benar-benar
+ * di-hosting di origin terpisah sebelum dianggap selesai, lihat
+ * docs/GAS_CLASP_DEPLOY.md bagian Testing.
+ *
+ * Konfigurasi deployment ada pada apps-script/appsscript.json
+ * (`webapp.executeAs: "USER_DEPLOYING"`, `webapp.access: "ANYONE_ANONYMOUS"`
+ * — WAJIB, karena identitas pengguna TIDAK LAGI berasal dari sesi Google;
+ * lihat catatan di appsscript.json itu sendiri).
+ *
+ * Dependency: ContentService (bawaan Apps Script), core/Config.gs
+ * (getApiToken), seluruh apps-script/api/*Api.gs
  */
 
 /**
- * Entry point Web App. Menyajikan halaman uji coba Report Engine.
- * @param {Object} e Parameter request (tidak dipakai pada MVP ini).
- * @return {HtmlOutput}
+ * Entry point GET — action baca (read-only) via query string.
+ * @param {Object} e Parameter request Apps Script.
+ * @return {TextOutput}
  */
 function doGet(e) {
-  return HtmlService.createHtmlOutputFromFile('api/Index')
-    .setTitle('SIGAP SARPRAS — Report Engine (Test Harness)')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  var params = (e && e.parameter) || {};
+  var action = params.action;
+
+  // Status ping — TIDAK memerlukan token, sesuai pola yang sama dipakai
+  // aplikasi SIGAP (BACKEND_VERSION) untuk membedakan "belum deploy ulang"
+  // dari "sudah tapi error lain".
+  if (!action) {
+    return jsonOutput_(createSuccessResponse({
+      service: 'SIGAP SARPRAS',
+      backendVersion: APP_BACKEND_VERSION_
+    }));
+  }
+
+  var tokenError = checkToken_(params.token);
+  if (tokenError) {
+    return jsonOutput_(tokenError);
+  }
+
+  return jsonOutput_(routeGetAction_(action, params));
+}
+
+/**
+ * Entry point POST — action tulis (mutating) via JSON body.
+ * @param {Object} e Parameter request Apps Script.
+ * @return {TextOutput}
+ */
+function doPost(e) {
+  var body;
+  try {
+    body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+  } catch (parseError) {
+    return jsonOutput_(createErrorResponse('Body request bukan JSON yang valid.'));
+  }
+
+  var tokenError = checkToken_(body.token);
+  if (tokenError) {
+    return jsonOutput_(tokenError);
+  }
+
+  return jsonOutput_(routePostAction_(body.action, body));
+}
+
+/** Versi backend saat ini — bump setiap perubahan .gs perlu diverifikasi setelah deploy manual. @private */
+var APP_BACKEND_VERSION_ = 1;
+
+/**
+ * Memeriksa token API statis. Mengembalikan response error siap-kirim bila
+ * tidak valid, atau null bila valid.
+ * @param {string} token
+ * @return {?Object}
+ * @private
+ */
+function checkToken_(token) {
+  var expected;
+  try {
+    expected = getApiToken();
+  } catch (e) {
+    return createErrorResponse('Server belum dikonfigurasi (API_TOKEN belum diset).');
+  }
+  if (isEmpty(token) || token !== expected) {
+    return createErrorResponse('Token API tidak valid.');
+  }
+  return null;
+}
+
+/**
+ * Membungkus objek response standar (createSuccessResponse/createErrorResponse)
+ * menjadi TextOutput JSON.
+ * @param {Object} responseObject
+ * @return {TextOutput}
+ * @private
+ */
+function jsonOutput_(responseObject) {
+  return ContentService
+    .createTextOutput(JSON.stringify(responseObject))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Router action GET. Setiap action (kecuali "status", ditangani di doGet())
+ * memerlukan sessionToken yang divalidasi oleh fungsi api* masing-masing.
+ * @param {string} action
+ * @param {Object} p Query params.
+ * @return {Object} Response standar (createSuccessResponse/createErrorResponse).
+ * @private
+ */
+function routeGetAction_(action, p) {
+  switch (action) {
+    case 'getCurrentUser':
+      return apiGetCurrentUser(p.sessionToken);
+    case 'listReports':
+      return apiListReports(p.sessionToken, p.status);
+    case 'getReport':
+      return apiGetReport(p.sessionToken, p.reportId);
+    case 'listReportHistory':
+      return apiListReportHistory(p.sessionToken, p.reportId);
+    case 'getReportStatusOptions':
+      return apiGetReportStatusOptions(p.sessionToken);
+    case 'listLocations':
+      return apiListLocations(p.sessionToken);
+    case 'listCategories':
+      return apiListCategories(p.sessionToken);
+    case 'listFacilities':
+      return apiListFacilities(p.sessionToken);
+    case 'listOwners':
+      return apiListOwners(p.sessionToken);
+    case 'listUsers':
+      return apiListUsers(p.sessionToken);
+    default:
+      return createErrorResponse('Action GET tidak dikenal: "' + action + '".');
+  }
+}
+
+/**
+ * Router action POST.
+ * @param {string} action
+ * @param {Object} b Parsed JSON body.
+ * @return {Object} Response standar (createSuccessResponse/createErrorResponse).
+ * @private
+ */
+function routePostAction_(action, b) {
+  switch (action) {
+    case 'login':
+      return apiLogin(b.email, b.password);
+    case 'logout':
+      return apiLogout(b.sessionToken);
+    case 'changePassword':
+      return apiChangePassword(b.sessionToken, b.oldPassword, b.newPassword);
+    case 'setPassword':
+      return apiSetPassword(b.sessionToken, b.userId, b.newPassword);
+
+    case 'createReport':
+      return apiCreateReport(b.sessionToken, b.payload);
+    case 'updateReport':
+      return apiUpdateReport(b.sessionToken, b.reportId, b.updates);
+    case 'changeReportStatus':
+      return apiChangeReportStatus(b.sessionToken, b.reportId, b.newStatus, b.notes);
+    case 'deactivateReport':
+      return apiDeactivateReport(b.sessionToken, b.reportId);
+
+    case 'createUser':
+      return apiCreateUser(b.sessionToken, b.payload);
+    case 'updateUser':
+      return apiUpdateUser(b.sessionToken, b.userId, b.updates);
+    case 'deactivateUser':
+      return apiDeactivateUser(b.sessionToken, b.userId);
+
+    case 'createLocation':
+      return apiCreateLocation(b.sessionToken, b.payload);
+    case 'updateLocation':
+      return apiUpdateLocation(b.sessionToken, b.locationId, b.updates);
+    case 'deactivateLocation':
+      return apiDeactivateLocation(b.sessionToken, b.locationId);
+
+    case 'createCategory':
+      return apiCreateCategory(b.sessionToken, b.payload);
+    case 'updateCategory':
+      return apiUpdateCategory(b.sessionToken, b.categoryId, b.updates);
+    case 'deactivateCategory':
+      return apiDeactivateCategory(b.sessionToken, b.categoryId);
+
+    case 'createFacility':
+      return apiCreateFacility(b.sessionToken, b.payload);
+    case 'updateFacility':
+      return apiUpdateFacility(b.sessionToken, b.facilityId, b.updates);
+    case 'deactivateFacility':
+      return apiDeactivateFacility(b.sessionToken, b.facilityId);
+
+    case 'createOwner':
+      return apiCreateOwner(b.sessionToken, b.payload);
+    case 'updateOwner':
+      return apiUpdateOwner(b.sessionToken, b.ownerId, b.updates);
+    case 'deactivateOwner':
+      return apiDeactivateOwner(b.sessionToken, b.ownerId);
+
+    default:
+      return createErrorResponse('Action POST tidak dikenal: "' + action + '".');
+  }
 }
 
 
-===== FILE: api/Index.html =====
-
-<!--
-  Index.html — SIGAP SARPRAS Report Engine test harness (MVP, PHASE 4.5).
-
-  BUKAN frontend final PHASE 7. Halaman ini sengaja polos (vanilla
-  HTML/CSS/JS, tanpa framework/CDN eksternal) — tujuannya hanya membuat
-  Report Engine benar-benar bisa dibuka dan diuji oleh pengguna nyata
-  lewat URL Web App, sesuai instruksi MVP ("aplikasi yang benar-benar
-  dapat dijalankan dan diuji").
-
-  Seluruh interaksi lewat google.script.run ke fungsi publik pada
-  apps-script/api/ReportApi.gs dan apps-script/api/MasterDataApi.gs.
-  Validasi bisnis TIDAK diduplikasi di sini — server (Service Layer)
-  tetap satu-satunya sumber kebenaran, halaman ini hanya menampilkan
-  pesan sukses/gagal apa adanya.
--->
-<html>
-<head>
-  <base target="_top">
-  <style>
-    body { font-family: Arial, Helvetica, sans-serif; max-width: 900px; margin: 24px auto; padding: 0 16px; color: #1a1a1a; }
-    h1 { font-size: 20px; }
-    h2 { font-size: 16px; margin-top: 32px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
-    .muted { color: #666; font-size: 13px; }
-    #whoami { padding: 10px 12px; background: #f4f4f4; border-radius: 6px; margin-bottom: 16px; }
-    #whoami.error { background: #fde8e8; color: #8a1f1f; }
-    form { display: flex; flex-direction: column; gap: 8px; max-width: 480px; }
-    label { font-size: 13px; font-weight: bold; }
-    input, select, textarea, button { font-size: 14px; padding: 6px 8px; }
-    textarea { min-height: 60px; }
-    button { cursor: pointer; margin-top: 8px; width: fit-content; padding: 8px 16px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 8px; font-size: 13px; }
-    th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; vertical-align: top; }
-    th { background: #f4f4f4; }
-    .msg { margin-top: 8px; font-size: 13px; padding: 6px 8px; border-radius: 4px; }
-    .msg.ok { background: #e6f4ea; color: #1e6b30; }
-    .msg.err { background: #fde8e8; color: #8a1f1f; }
-    .status-controls { display: flex; gap: 4px; align-items: center; }
-    .status-controls select, .status-controls button { font-size: 12px; padding: 3px 6px; }
-  </style>
-</head>
-<body>
-  <h1>SIGAP SARPRAS — Report Engine (Test Harness, PHASE 4.5)</h1>
-  <p class="muted">Halaman uji coba minimal, BUKAN frontend final. Lihat docs/DEVELOPMENT_ROADMAP.md (PHASE 7) untuk frontend penuh.</p>
-
-  <div id="whoami">Memuat identitas pengguna...</div>
-
-  <h2>Buat Laporan Baru</h2>
-  <form id="createForm">
-    <label for="location_id">Lokasi *</label>
-    <select id="location_id" required></select>
-
-    <label for="category_id">Kategori *</label>
-    <select id="category_id" required></select>
-
-    <label for="description">Deskripsi Laporan *</label>
-    <textarea id="description" required placeholder="Jelaskan kerusakan/gangguan yang ditemukan"></textarea>
-
-    <label for="condition">Kondisi Singkat (opsional)</label>
-    <input type="text" id="condition" placeholder="mis. Lampu mati total">
-
-    <label for="impact_level">Tingkat Dampak (opsional)</label>
-    <input type="text" id="impact_level" placeholder="mis. RENDAH / SEDANG / TINGGI">
-
-    <label for="safety_risk">Risiko Keselamatan (opsional)</label>
-    <input type="text" id="safety_risk" placeholder="mis. YA / TIDAK">
-
-    <button type="submit">Kirim Laporan</button>
-  </form>
-  <div id="createMsg"></div>
-
-  <h2>Daftar Laporan</h2>
-  <div>
-    <label for="statusFilter">Filter status:</label>
-    <select id="statusFilter">
-      <option value="">Semua laporan aktif</option>
-    </select>
-    <button id="refreshBtn" type="button">Muat Ulang</button>
-  </div>
-  <div id="listMsg"></div>
-  <table id="reportTable">
-    <thead>
-      <tr>
-        <th>Nomor Laporan</th>
-        <th>Status</th>
-        <th>Deskripsi</th>
-        <th>Dibuat</th>
-        <th>Aksi</th>
-      </tr>
-    </thead>
-    <tbody id="reportTableBody"></tbody>
-  </table>
-
-  <script>
-    var currentUser = null;
-    var statusOptions = [];
-
-    function showMsg(elId, text, ok) {
-      var el = document.getElementById(elId);
-      el.textContent = text;
-      el.className = 'msg ' + (ok ? 'ok' : 'err');
-    }
-
-    function loadCurrentUser() {
-      google.script.run.withSuccessHandler(function (res) {
-        var el = document.getElementById('whoami');
-        if (!res.success) {
-          el.className = 'error';
-          el.textContent = 'Tidak dapat mengidentifikasi pengguna: ' + res.error.message;
-          return;
-        }
-        currentUser = res.data;
-        el.className = '';
-        el.textContent = 'Masuk sebagai: ' + currentUser.full_name + ' (' + currentUser.email + ') — peran: ' + currentUser.role +
-          (currentUser.can_manage_workflow ? ' — dapat mengubah status laporan' : '');
-      }).withFailureHandler(function (err) {
-        var el = document.getElementById('whoami');
-        el.className = 'error';
-        el.textContent = 'Gagal memuat identitas: ' + err.message;
-      }).apiGetCurrentUser();
-    }
-
-    function loadLocationsAndCategories() {
-      google.script.run.withSuccessHandler(function (res) {
-        var sel = document.getElementById('location_id');
-        if (res.success) {
-          res.data.forEach(function (loc) {
-            var opt = document.createElement('option');
-            opt.value = loc.location_id;
-            opt.textContent = loc.location_path || loc.location_name;
-            sel.appendChild(opt);
-          });
-        }
-      }).apiListLocations();
-
-      google.script.run.withSuccessHandler(function (res) {
-        var sel = document.getElementById('category_id');
-        if (res.success) {
-          res.data.forEach(function (cat) {
-            var opt = document.createElement('option');
-            opt.value = cat.category_id;
-            opt.textContent = cat.category_name;
-            sel.appendChild(opt);
-          });
-        }
-      }).apiListCategories();
-    }
-
-    function loadStatusOptions() {
-      google.script.run.withSuccessHandler(function (res) {
-        if (!res.success) { return; }
-        statusOptions = res.data;
-        var filterSel = document.getElementById('statusFilter');
-        statusOptions.forEach(function (s) {
-          var opt = document.createElement('option');
-          opt.value = s;
-          opt.textContent = s;
-          filterSel.appendChild(opt);
-        });
-      }).apiGetReportStatusOptions();
-    }
-
-    function renderReports(reports) {
-      var body = document.getElementById('reportTableBody');
-      body.innerHTML = '';
-      reports.forEach(function (r) {
-        var tr = document.createElement('tr');
-
-        var tdNumber = document.createElement('td');
-        tdNumber.textContent = r.report_number;
-        tr.appendChild(tdNumber);
-
-        var tdStatus = document.createElement('td');
-        tdStatus.textContent = r.status;
-        tr.appendChild(tdStatus);
-
-        var tdDesc = document.createElement('td');
-        tdDesc.textContent = r.description;
-        tr.appendChild(tdDesc);
-
-        var tdCreated = document.createElement('td');
-        tdCreated.textContent = r.created_at;
-        tr.appendChild(tdCreated);
-
-        var tdAction = document.createElement('td');
-        if (currentUser && currentUser.can_manage_workflow) {
-          var wrap = document.createElement('div');
-          wrap.className = 'status-controls';
-
-          var select = document.createElement('select');
-          statusOptions.forEach(function (s) {
-            var opt = document.createElement('option');
-            opt.value = s;
-            opt.textContent = s;
-            if (s === r.status) { opt.selected = true; }
-            select.appendChild(opt);
-          });
-
-          var btn = document.createElement('button');
-          btn.type = 'button';
-          btn.textContent = 'Ubah Status';
-          btn.onclick = function () {
-            var newStatus = select.value;
-            btn.disabled = true;
-            google.script.run.withSuccessHandler(function (res) {
-              btn.disabled = false;
-              if (res.success) {
-                showMsg('listMsg', 'Status "' + r.report_number + '" berhasil diubah menjadi ' + res.data.status + '.', true);
-                loadReports();
-              } else {
-                showMsg('listMsg', 'Gagal mengubah status: ' + res.error.message, false);
-              }
-            }).withFailureHandler(function (err) {
-              btn.disabled = false;
-              showMsg('listMsg', 'Gagal mengubah status: ' + err.message, false);
-            }).apiChangeReportStatus(r.report_id, newStatus, '');
-          };
-
-          wrap.appendChild(select);
-          wrap.appendChild(btn);
-          tdAction.appendChild(wrap);
-        } else {
-          tdAction.textContent = '-';
-        }
-        tr.appendChild(tdAction);
-
-        body.appendChild(tr);
-      });
-    }
-
-    function loadReports() {
-      var status = document.getElementById('statusFilter').value;
-      google.script.run.withSuccessHandler(function (res) {
-        if (!res.success) {
-          showMsg('listMsg', 'Gagal memuat laporan: ' + res.error.message, false);
-          return;
-        }
-        document.getElementById('listMsg').textContent = '';
-        renderReports(res.data);
-      }).withFailureHandler(function (err) {
-        showMsg('listMsg', 'Gagal memuat laporan: ' + err.message, false);
-      }).apiListReports(status || null);
-    }
-
-    document.getElementById('createForm').addEventListener('submit', function (evt) {
-      evt.preventDefault();
-      var payload = {
-        location_id: document.getElementById('location_id').value,
-        category_id: document.getElementById('category_id').value,
-        description: document.getElementById('description').value,
-        condition: document.getElementById('condition').value,
-        impact_level: document.getElementById('impact_level').value,
-        safety_risk: document.getElementById('safety_risk').value
-      };
-      google.script.run.withSuccessHandler(function (res) {
-        if (res.success) {
-          showMsg('createMsg', 'Laporan berhasil dibuat: ' + res.data.report_number, true);
-          document.getElementById('createForm').reset();
-          loadReports();
-        } else {
-          showMsg('createMsg', 'Gagal membuat laporan: ' + res.error.message, false);
-        }
-      }).withFailureHandler(function (err) {
-        showMsg('createMsg', 'Gagal membuat laporan: ' + err.message, false);
-      }).apiCreateReport(payload);
-    });
-
-    document.getElementById('refreshBtn').addEventListener('click', loadReports);
-    document.getElementById('statusFilter').addEventListener('change', loadReports);
-
-    loadCurrentUser();
-    loadLocationsAndCategories();
-    loadStatusOptions();
-    loadReports();
-  </script>
-</body>
-</html>
-
-
-===== FILE: appsscript.json =====
-
+===== FILE: apps-script/appsscript.json =====
 {
   "timeZone": "Asia/Makassar",
   "dependencies": {},
   "exceptionLogging": "STACKDRIVER",
   "runtimeVersion": "V8",
   "webapp": {
-    "executeAs": "USER_ACCESSING",
-    "access": "DOMAIN"
+    "executeAs": "USER_DEPLOYING",
+    "access": "ANYONE_ANONYMOUS"
   }
+}
+
+
+===== FILE: apps-script/tools/InspectDatabase.gs (OPSIONAL — hanya untuk memeriksa spreadsheet yang sudah ada) =====
+/**
+ * InspectDatabase.gs
+ *
+ * ============================================================
+ * READ-ONLY DISCOVERY UTILITY — BUKAN DOMAIN SERVICE, TIDAK MENULIS APA PUN
+ * ============================================================
+ *
+ * File ini adalah alat bantu infrastruktur untuk MENGINSPEKSI Google
+ * Spreadsheet database SIGAP SARPRAS yang SUDAH ADA (kemungkinan berisi
+ * hasil pekerjaan sebelum repository ini dibuat) — TANPA mengubahnya
+ * sedikit pun. Dijalankan MANUAL oleh pengelola sistem dari editor Apps
+ * Script, sama seperti `SetupDatabase.gs`, tetapi tujuannya murni
+ * DISCOVERY: mencari tahu struktur nyata yang ada, membandingkannya
+ * dengan `docs/DATABASE_SCHEMA.md`, dan melaporkan hasilnya — BUKAN
+ * membuat/memperbaiki apa pun.
+ *
+ * ATURAN MUTLAK: READ-ONLY ONLY. File ini TIDAK PERNAH memanggil method
+ * penulisan Spreadsheet/Sheet apa pun — tidak ada setValue, setValues,
+ * appendRow, insertSheet, deleteSheet, deleteRow, clear, clearContents,
+ * clearFormat, copyTo, moveTo, atau operasi write lainnya. Hanya method
+ * BACA yang dipakai: getSheets(), getSheetByName(), getName(), getId(),
+ * getLastRow(), getLastColumn(), getRange(...).getValues().
+ *
+ * Kepatuhan pada aturan di atas divalidasi melalui AUDIT STATIS (grep)
+ * terhadap teks source code file ini, dijalankan sebelum setiap commit —
+ * lihat perintah pada docs/DATABASE_SETUP.md bagian "Audit Read-Only
+ * InspectDatabase.gs". Sengaja TIDAK diimplementasikan sebagai runtime
+ * self-inspection (membaca source code sendiri lewat Apps Script API)
+ * karena itu membutuhkan scope OAuth tambahan (Apps Script API harus
+ * diaktifkan terpisah) yang tidak semestinya dibutuhkan oleh utility
+ * read-only sederhana seperti ini — audit statis di sisi repository jauh
+ * lebih sederhana, sama efektifnya, dan tidak menambah permission apa pun
+ * yang diminta ke pengguna.
+ *
+ * TIDAK PERNAH membaca/menampilkan isi baris data (data user, data
+ * laporan, dsb.) — hanya metadata struktural: nama sheet, jumlah baris,
+ * jumlah kolom, dan header. Untuk 91_sequences, hanya `sequence_name` dan
+ * `current_value` yang dibaca (bukan data sensitif — sekadar angka
+ * counter).
+ *
+ * PHASE 3.75 — Legacy-Compatible Reconciliation: schema canonical
+ * `91_sequences` (`sequence_name`/`current_value`) kini mengikuti
+ * struktur database produksi SIGAP SARPRAS yang sudah berjalan nyata
+ * (dikonfirmasi via inspeksi read-only), BUKAN rancangan awal repository
+ * (`sequence_key`/`last_value`) yang tidak pernah dipakai di deployment
+ * mana pun. Lihat docs/DATABASE_SCHEMA.md bagian 91_sequences.
+ *
+ * Dependency (reuse, tidak menduplikasi):
+ * - getSpreadsheet() dari core/Config.gs.
+ * - getHeaderRow_() dan rowArrayToObject_() dari core/DatabaseService.gs
+ *   (keduanya murni baca, tanpa side effect — aman dipakai di sini).
+ * - SETUP_DATABASE_SCHEMA_ dari apps-script/tools/SetupDatabase.gs —
+ *   SATU-SATUNYA sumber kebenaran daftar 12 sheet + header resmi, supaya
+ *   Inspector dan Setup selalu membandingkan terhadap schema yang identik
+ *   (tidak ada risiko dua daftar schema yang diam-diam berbeda).
+ * - setupDatabaseIsHeaderEmpty_() dari SetupDatabase.gs — deteksi header
+ *   kosong, dipakai identik oleh kedua file.
+ * - CONFIG.SEQUENCES dari core/Config.gs — daftar sequence key resmi.
+ *
+ * Referensi: docs/DATABASE_SCHEMA.md, docs/DATABASE_SETUP.md
+ */
+
+/**
+ * Melakukan inspeksi lengkap database SIGAP SARPRAS yang sudah ada dan
+ * mengembalikan hasilnya sebagai objek terstruktur — TIDAK mengubah
+ * apa pun pada spreadsheet. Cocok dipakai saat hasil inspeksi perlu
+ * disalin (JSON) untuk dianalisis lebih lanjut.
+ *
+ * @return {Object} Hasil inspeksi, struktur:
+ *   {
+ *     status: 'READY'|'PARTIAL'|'MISMATCH_FOUND',
+ *     generated_at: string,
+ *     spreadsheet: {id, name},
+ *     expected_schema: {sheets: [{sheet_name, expected_headers}], sequences: [string]},
+ *     actual_database: {
+ *       sheets_found: [{sheet_name, total_row_count, data_row_count, column_count, header}],
+ *       sheets_missing: [string],
+ *       unknown_sheets: [{sheet_name, total_row_count, data_row_count, column_count, header}]
+ *     },
+ *     compatibility: [{sheet_name, exists, header_status, missing_columns, unexpected_columns}],
+ *     sequences: {
+ *       sheet_status: 'MATCH'|'MISMATCH'|'EMPTY'|'NOT_FOUND',
+ *       found: [{sequence_name, current_value}],
+ *       expected_but_missing: [string]
+ *     }
+ *   }
+ * @throws {Error} Hanya jika SPREADSHEET_ID belum diset atau spreadsheet
+ *   tidak dapat dibuka (kegagalan pre-condition, bukan hasil inspeksi) —
+ *   lihat getSpreadsheetId()/getSpreadsheet() pada core/Config.gs.
+ */
+function inspectDatabaseAsJson() {
+  var spreadsheet = getSpreadsheet(); // read-only: hanya membuka, tidak menulis
+
+  var expectedSheets = SETUP_DATABASE_SCHEMA_; // reuse dari SetupDatabase.gs — satu sumber kebenaran
+  var expectedSequenceKeys = Object.keys(CONFIG.SEQUENCES).map(function (key) { return CONFIG.SEQUENCES[key]; });
+  var expectedSheetNames = expectedSheets.map(function (entry) { return entry.sheetName; });
+
+  var actualSheets = spreadsheet.getSheets(); // read-only: daftar seluruh sheet yang benar-benar ada
+  var actualSheetNames = actualSheets.map(function (sheet) { return sheet.getName(); });
+
+  var sheetsFound = [];
+  var sheetsMissing = [];
+  var unknownSheets = [];
+  var compatibility = [];
+  var hasMismatch = false;
+  var hasMissing = false;
+
+  for (var i = 0; i < expectedSheets.length; i++) {
+    var schemaEntry = expectedSheets[i];
+    var sheet = spreadsheet.getSheetByName(schemaEntry.sheetName); // read-only
+
+    if (!sheet) {
+      sheetsMissing.push(schemaEntry.sheetName);
+      hasMissing = true;
+      compatibility.push({
+        sheet_name: schemaEntry.sheetName,
+        exists: false,
+        header_status: 'NOT_FOUND',
+        missing_columns: schemaEntry.headers.slice(),
+        unexpected_columns: []
+      });
+      continue;
+    }
+
+    var meta = inspectDatabaseReadSheetMeta_(sheet);
+    sheetsFound.push(Object.assign({ sheet_name: schemaEntry.sheetName }, meta));
+
+    if (setupDatabaseIsHeaderEmpty_(meta.header)) {
+      hasMissing = true;
+      compatibility.push({
+        sheet_name: schemaEntry.sheetName,
+        exists: true,
+        header_status: 'EMPTY',
+        missing_columns: schemaEntry.headers.slice(),
+        unexpected_columns: []
+      });
+      continue;
+    }
+
+    var diff = inspectDatabaseDiffHeaders_(schemaEntry.headers, meta.header);
+    var isMatch = diff.missing.length === 0 && diff.unexpected.length === 0;
+    if (!isMatch) {
+      hasMismatch = true;
+    }
+    compatibility.push({
+      sheet_name: schemaEntry.sheetName,
+      exists: true,
+      header_status: isMatch ? 'MATCH' : 'MISMATCH',
+      missing_columns: diff.missing,
+      unexpected_columns: diff.unexpected
+    });
+  }
+
+  for (var j = 0; j < actualSheetNames.length; j++) {
+    var name = actualSheetNames[j];
+    if (expectedSheetNames.indexOf(name) === -1) {
+      var unknownMeta = inspectDatabaseReadSheetMeta_(actualSheets[j]);
+      unknownSheets.push(Object.assign({ sheet_name: name }, unknownMeta));
+    }
+  }
+
+  // --- Sequences (91_sequences) — hanya sequence_name/current_value, tanpa data lain ---
+  var sequenceCompat = compatibility.filter(function (c) { return c.sheet_name === CONFIG.SHEETS.SEQUENCES; })[0];
+  var sequenceReport = { sheet_status: sequenceCompat.header_status, found: [], expected_but_missing: expectedSequenceKeys.slice() };
+
+  if (sequenceCompat.header_status === 'MATCH') {
+    var sequenceSheet = spreadsheet.getSheetByName(CONFIG.SHEETS.SEQUENCES);
+    var headers = getHeaderRow_(sequenceSheet); // reuse DatabaseService.gs, read-only
+    var lastRow = sequenceSheet.getLastRow();
+
+    if (lastRow >= 2) {
+      var rows = sequenceSheet.getRange(2, 1, lastRow - 1, headers.length).getValues(); // read-only
+      for (var k = 0; k < rows.length; k++) {
+        var rowObj = rowArrayToObject_(headers, rows[k]); // reuse DatabaseService.gs, read-only pure transform
+        sequenceReport.found.push({ sequence_name: rowObj.sequence_name, current_value: rowObj.current_value });
+      }
+    }
+
+    var foundKeys = sequenceReport.found.map(function (s) { return s.sequence_name; });
+    sequenceReport.expected_but_missing = expectedSequenceKeys.filter(function (key) { return foundKeys.indexOf(key) === -1; });
+  }
+
+  // --- Status keseluruhan ---
+  // MISMATCH_FOUND selalu prioritas tertinggi (perlu keputusan manual).
+  // PARTIAL berarti tidak ada konflik, hanya belum lengkap (aman dilanjutkan
+  // dengan setupDatabase() setelah direview). Sequence yang belum lengkap
+  // TIDAK memengaruhi status ini karena SequenceService membuat baris
+  // sequence otomatis & aman saat pertama kali dipakai (lihat SequenceService.gs).
+  var status = hasMismatch ? 'MISMATCH_FOUND' : (hasMissing ? 'PARTIAL' : 'READY');
+
+  return {
+    status: status,
+    generated_at: nowTimestamp(),
+    spreadsheet: { id: getSpreadsheetId(), name: spreadsheet.getName() },
+    expected_schema: {
+      sheets: expectedSheets.map(function (entry) { return { sheet_name: entry.sheetName, expected_headers: entry.headers }; }),
+      sequences: expectedSequenceKeys
+    },
+    actual_database: {
+      sheets_found: sheetsFound,
+      sheets_missing: sheetsMissing,
+      unknown_sheets: unknownSheets
+    },
+    compatibility: compatibility,
+    sequences: sequenceReport
+  };
+}
+
+/**
+ * Membaca metadata satu sheet (read-only): jumlah baris total, jumlah
+ * baris data (di luar header), jumlah kolom, dan header. TIDAK PERNAH
+ * membaca isi baris data.
+ * @param {Sheet} sheet Objek Sheet.
+ * @return {{total_row_count:number, data_row_count:number, column_count:number, header:Array<string>}}
+ * @private
+ */
+function inspectDatabaseReadSheetMeta_(sheet) {
+  var totalRowCount = sheet.getLastRow(); // read-only
+  var columnCount = sheet.getLastColumn(); // read-only
+  var header = getHeaderRow_(sheet); // read-only, reuse DatabaseService.gs
+  return {
+    total_row_count: totalRowCount,
+    data_row_count: Math.max(totalRowCount - 1, 0),
+    column_count: columnCount,
+    header: header
+  };
+}
+
+/**
+ * Membandingkan header aktual terhadap header yang diharapkan BERBASIS
+ * SET nama kolom (bukan urutan) — mengikuti aturan yang sama persis
+ * dengan setupDatabaseHeadersMatch_() pada SetupDatabase.gs (lihat
+ * catatan "PERBANDINGAN HEADER" di sana). Berbeda dari fungsi tersebut,
+ * fungsi ini mengembalikan RINCIAN perbedaan (bukan hanya boolean),
+ * karena Inspector perlu melaporkan kolom mana yang hilang/asing secara
+ * eksplisit untuk keperluan DISCOVERY.
+ *
+ * CATATAN PEMELIHARAAN: jika aturan perbandingan header berubah, ubah
+ * fungsi ini DAN setupDatabaseHeadersMatch_() secara bersamaan agar
+ * Inspector dan Setup tetap konsisten.
+ *
+ * @param {Array<string>} expectedHeaders Header sesuai schema resmi.
+ * @param {Array<string>} actualHeaders Header yang sebenarnya ada di sheet.
+ * @return {{missing: Array<string>, unexpected: Array<string>}}
+ * @private
+ */
+function inspectDatabaseDiffHeaders_(expectedHeaders, actualHeaders) {
+  var normalizedExpected = expectedHeaders.filter(function (h) { return h !== '' && h !== null && h !== undefined; });
+  var normalizedActual = actualHeaders.filter(function (h) { return h !== '' && h !== null && h !== undefined; });
+
+  var missing = normalizedExpected.filter(function (h) { return normalizedActual.indexOf(h) === -1; });
+  var unexpected = normalizedActual.filter(function (h) { return normalizedExpected.indexOf(h) === -1; });
+
+  return { missing: missing, unexpected: unexpected };
+}
+
+/**
+ * Melakukan inspeksi lengkap database SIGAP SARPRAS yang sudah ada dan
+ * mencetak hasilnya ke Logger dalam format human-readable — TIDAK
+ * mengubah apa pun pada spreadsheet. Ini adalah pembungkus tampilan di
+ * atas inspectDatabaseAsJson(); logika inspeksi sesungguhnya hanya ada
+ * SATU tempat (menghindari dua sumber kebenaran yang bisa berbeda hasil).
+ *
+ * @return {Object} Objek hasil yang sama persis dengan inspectDatabaseAsJson(),
+ *   supaya juga bisa dipakai secara terprogram jika dipanggil dari fungsi lain.
+ */
+function inspectExistingDatabase() {
+  var result = inspectDatabaseAsJson();
+  inspectDatabaseLogResult_(result);
+  return result;
+}
+
+/**
+ * Mencetak hasil inspeksi ke Logger dengan pemisahan jelas: EXPECTED
+ * SCHEMA, ACTUAL DATABASE, COMPATIBILITY RESULT.
+ * @param {Object} result Hasil dari inspectDatabaseAsJson().
+ * @private
+ */
+function inspectDatabaseLogResult_(result) {
+  var NAME_WIDTH = 22;
+  function pad(text) { return (String(text) + '                        ').substring(0, NAME_WIDTH); }
+
+  Logger.log('==============================================');
+  Logger.log('DATABASE_INSPECTION_RESULT');
+  Logger.log('==============================================');
+  Logger.log('STATUS: ' + result.status);
+  Logger.log('Waktu inspeksi   : ' + result.generated_at);
+  Logger.log('Spreadsheet ID   : ' + result.spreadsheet.id);
+  Logger.log('Spreadsheet Name : ' + result.spreadsheet.name);
+
+  Logger.log('');
+  Logger.log('---------------- EXPECTED SCHEMA ----------------');
+  for (var i = 0; i < result.expected_schema.sheets.length; i++) {
+    var exp = result.expected_schema.sheets[i];
+    Logger.log(pad(exp.sheet_name) + '[' + exp.expected_headers.join(', ') + ']');
+  }
+  Logger.log('Expected sequences: ' + result.expected_schema.sequences.join(', '));
+
+  Logger.log('');
+  Logger.log('---------------- ACTUAL DATABASE ----------------');
+  Logger.log('Sheets ditemukan (' + result.actual_database.sheets_found.length + '):');
+  for (var j = 0; j < result.actual_database.sheets_found.length; j++) {
+    var found = result.actual_database.sheets_found[j];
+    Logger.log(
+      '  ' + pad(found.sheet_name) + 'rows=' + found.data_row_count +
+      ', cols=' + found.column_count + ', header=[' + found.header.join(', ') + ']'
+    );
+  }
+  Logger.log('Sheets HILANG (' + result.actual_database.sheets_missing.length + '): ' + result.actual_database.sheets_missing.join(', '));
+  Logger.log('Sheets ASING di luar schema (' + result.actual_database.unknown_sheets.length + '):');
+  for (var k = 0; k < result.actual_database.unknown_sheets.length; k++) {
+    var unk = result.actual_database.unknown_sheets[k];
+    Logger.log(
+      '  ' + pad(unk.sheet_name) + 'rows=' + unk.data_row_count +
+      ', cols=' + unk.column_count + ', header=[' + unk.header.join(', ') + ']'
+    );
+  }
+
+  Logger.log('');
+  Logger.log('Sequences (91_sequences) — sheet_status: ' + result.sequences.sheet_status);
+  for (var m = 0; m < result.sequences.found.length; m++) {
+    var seq = result.sequences.found[m];
+    Logger.log('  ' + pad(seq.sequence_name) + 'current_value=' + seq.current_value);
+  }
+  if (result.sequences.expected_but_missing.length > 0) {
+    Logger.log('  Sequence belum ada (akan dibuat otomatis saat pertama dipakai): ' + result.sequences.expected_but_missing.join(', '));
+  }
+
+  Logger.log('');
+  Logger.log('---------------- COMPATIBILITY RESULT ----------------');
+  for (var n = 0; n < result.compatibility.length; n++) {
+    var c = result.compatibility[n];
+    var line = pad(c.sheet_name) + c.header_status;
+    if (c.missing_columns.length > 0) line += ' | missing: [' + c.missing_columns.join(', ') + ']';
+    if (c.unexpected_columns.length > 0) line += ' | unexpected: [' + c.unexpected_columns.join(', ') + ']';
+    Logger.log(line);
+  }
+
+  Logger.log('==============================================');
+  Logger.log('STATUS AKHIR: ' + result.status);
+  Logger.log('==============================================');
+}
+
+
+===== FILE: apps-script/tools/SetupDatabase.gs (OPSIONAL — membuat/melengkapi sheet yang belum ada, tidak pernah menimpa data) =====
+/**
+ * SetupDatabase.gs
+ *
+ * ============================================================
+ * ONE-TIME MANUAL SETUP UTILITY — BUKAN DOMAIN SERVICE
+ * ============================================================
+ *
+ * File ini adalah alat bantu infrastruktur untuk menyiapkan Google
+ * Spreadsheet database SIGAP SARPRAS (membuat sheet + header + baris
+ * sequence awal). File ini dijalankan MANUAL, SEKALI (dan aman diulang),
+ * oleh pengelola sistem langsung dari editor Apps Script — BUKAN dipanggil
+ * oleh frontend, BUKAN bagian dari alur bisnis produksi, dan BUKAN
+ * anggota domain manapun (users/, master-data/, reports/, audit/).
+ *
+ * KARENA ITU, file ini DIKECUALIKAN dari aturan "domain service dilarang
+ * memanggil SpreadsheetApp langsung" (docs/ARCHITECTURE.md bagian 4).
+ * Aturan tersebut berlaku untuk domain BISNIS yang membaca/menulis DATA;
+ * file ini melakukan operasi STRUKTUR (membuat sheet, menulis header) yang
+ * memang tidak disediakan oleh DatabaseService — DatabaseService sengaja
+ * generik dan mengasumsikan sheet SUDAH ADA dengan header yang valid
+ * (lihat DatabaseService.gs).
+ *
+ * Catatan teknis: file ini bahkan TIDAK PERNAH memanggil layanan global
+ * `SpreadsheetApp` secara langsung sama sekali — persis seperti
+ * DatabaseService.gs, satu-satunya pemanggil `SpreadsheetApp` langsung
+ * tetap `Config.getSpreadsheet()`. Yang membedakan file ini dari domain
+ * service adalah CAKUPAN method yang dipanggil pada objek Spreadsheet/Sheet
+ * hasil `getSpreadsheet()`: DatabaseService.gs hanya memanggil method DATA
+ * (getRange/getValues/setValues/appendRow pada baris yang sudah ada),
+ * sedangkan file ini juga memanggil method STRUKTUR (`insertSheet()`,
+ * menulis header pertama kali) yang tidak diekspos DatabaseService.
+ * Operasi struktural semacam ini hanya masuk akal dilakukan oleh utility
+ * setup, sekali di awal, sehingga dianggap infrastruktur, bukan
+ * pelanggaran arsitektur.
+ *
+ * Meski begitu, file ini TETAP memakai abstraksi yang sudah ada sebisa
+ * mungkin:
+ * - getSpreadsheet() dari core/Config.gs — satu-satunya titik yang
+ *   memanggil SpreadsheetApp, untuk membuka spreadsheet.
+ * - getHeaderRow_() dari core/DatabaseService.gs — untuk membaca header
+ *   (fungsi ini bertanda "private" via underscore, tetapi karena seluruh
+ *   file .gs dalam satu project Apps Script berbagi satu global scope,
+ *   fungsi ini memang dirancang untuk dipakai lintas file dalam project
+ *   yang sama — SequenceService.gs sudah memakai pola yang sama persis).
+ * - getRowById() dan insertRow() dari core/DatabaseService.gs — untuk
+ *   membaca/menulis baris pada sheet 91_sequences (operasi DATA, bukan
+ *   struktur, sehingga di sini WAJIB lewat DatabaseService seperti biasa).
+ *
+ * Konstanta schema header (SETUP_DATABASE_SCHEMA_) sengaja didefinisikan
+ * LOKAL di file ini, bukan di core/Config.gs, karena:
+ * 1. Tidak ada domain service produksi yang membutuhkan daftar header
+ *    per-kolom secara eksplisit — DatabaseService bekerja generik
+ *    berdasarkan header apa pun yang benar-benar ada di sheet saat
+ *    runtime (lihat DatabaseService.gs), dan domain service membangun
+ *    row object berdasarkan nama properti, bukan array header.
+ *    Menambahkan daftar ini ke Config.gs berarti menambah beban
+ *    pemeliharaan ke modul yang dipakai seluruh sistem, padahal hanya
+ *    dipakai SEKALI oleh utility ini.
+ * 2. Nama sheet (CONFIG.SHEETS) dan nama sequence (CONFIG.SEQUENCES)
+ *    TETAP diambil dari core/Config.gs, TIDAK diduplikasi — hanya daftar
+ *    kolom per sheet yang baru (karena memang belum ada representasi
+ *    machine-readable-nya di mana pun pada repository ini; sumber
+ *    kebenarannya adalah docs/DATABASE_SCHEMA.md dan
+ *    docs/DATABASE_SETUP.md, disalin persis ke sini).
+ *
+ * PERBANDINGAN HEADER: dilakukan berbasis SET nama kolom (bukan urutan),
+ * karena DatabaseService sendiri memetakan data berdasarkan NAMA kolom,
+ * bukan posisi (lihat DatabaseService.gs) — sehingga validator ini tidak
+ * boleh lebih ketat dari perilaku runtime sistem yang sesungguhnya.
+ * Kolom yang hilang ATAU kolom asing yang tidak dikenal sama-sama dianggap
+ * SCHEMA_MISMATCH, agar penyimpangan skema tetap terlihat jelas.
+ *
+ * KEAMANAN (tidak ada satu pun operasi berikut di file ini):
+ * - Tidak ada deleteSheet(), clear(), clearContents().
+ * - Tidak pernah menimpa header yang sudah ada dan berbeda dari schema
+ *   (hanya menulis header pada sheet yang benar-benar baru dibuat atau
+ *   masih sepenuhnya kosong).
+ * - Tidak pernah mengubah current_value pada sequence yang sudah ada.
+ * - Tidak ada migrasi skema otomatis maupun penghapusan baris.
+ *
+ * Dependency: core/Config.gs, core/DatabaseService.gs, core/UtilityService.gs
+ * Referensi: docs/DATABASE_SCHEMA.md, docs/DATABASE_SETUP.md
+ */
+
+/**
+ * Schema header resmi per sheet, disalin persis dari
+ * docs/DATABASE_SCHEMA.md / docs/DATABASE_SETUP.md (bagian 5). Urutan
+ * array ini juga menentukan URUTAN PEMROSESAN sheet oleh setupDatabase()
+ * dan verifyDatabaseSetup() (01_users → 91_sequences), agar log mudah
+ * dibaca dan konsisten dengan urutan pada dokumentasi.
+ *
+ * Nama sheet diambil dari CONFIG.SHEETS (core/Config.gs) — TIDAK
+ * di-hardcode ulang di sini — hanya daftar kolomnya yang baru.
+ *
+ * PHASE 3.75 — Legacy-Compatible Reconciliation: header untuk
+ * `11_report_photos`, `12_report_history`, `13_report_comments`,
+ * `20_audit_logs`, dan `91_sequences` mengikuti struktur database
+ * produksi SIGAP SARPRAS yang sudah berjalan nyata (dikonfirmasi via
+ * inspeksi read-only), BUKAN rancangan awal repository yang tidak pernah
+ * dipakai di deployment mana pun. Lihat docs/DATABASE_SCHEMA.md bagian
+ * "Reconciliation Notes" pada masing-masing sheet untuk rincian
+ * legacy-only vs. repo-only columns.
+ * @private
+ */
+var SETUP_DATABASE_SCHEMA_ = [
+  { sheetName: CONFIG.SHEETS.USERS, headers: ['user_id', 'email', 'full_name', 'role', 'student_id', 'class_name', 'owner_id', 'is_active', 'created_at', 'updated_at'] },
+  { sheetName: CONFIG.SHEETS.LOCATIONS, headers: ['location_id', 'parent_id', 'location_name', 'location_type', 'location_path', 'is_active', 'created_at', 'updated_at'] },
+  { sheetName: CONFIG.SHEETS.CATEGORIES, headers: ['category_id', 'category_name', 'description', 'is_active', 'created_at', 'updated_at'] },
+  { sheetName: CONFIG.SHEETS.FACILITIES, headers: ['facility_id', 'category_id', 'facility_name', 'is_active', 'created_at', 'updated_at'] },
+  { sheetName: CONFIG.SHEETS.OWNERS, headers: ['owner_id', 'owner_name', 'description', 'is_active', 'created_at', 'updated_at'] },
+  { sheetName: CONFIG.SHEETS.REPORTS, headers: ['report_id', 'report_number', 'reporter_id', 'location_id', 'category_id', 'facility_id', 'condition', 'description', 'impact_level', 'safety_risk', 'system_priority', 'priority', 'priority_override_reason', 'status', 'owner_id', 'duplicate_of_report_id', 'created_at', 'updated_at', 'verified_at', 'assigned_at', 'started_at', 'completed_at', 'closed_at', 'is_active'] },
+  { sheetName: CONFIG.SHEETS.REPORT_PHOTOS, headers: ['photo_id', 'report_id', 'photo_type', 'drive_file_id', 'drive_url', 'file_name', 'mime_type', 'file_size', 'uploaded_by', 'uploaded_at', 'is_active'] },
+  { sheetName: CONFIG.SHEETS.REPORT_HISTORY, headers: ['history_id', 'report_id', 'previous_status', 'new_status', 'action', 'notes', 'performed_by', 'created_at'] },
+  { sheetName: CONFIG.SHEETS.REPORT_COMMENTS, headers: ['comment_id', 'report_id', 'comment_type', 'message', 'created_by', 'is_internal', 'created_at', 'is_active'] },
+  { sheetName: CONFIG.SHEETS.AUDIT_LOGS, headers: ['audit_id', 'user_id', 'action', 'entity_type', 'entity_id', 'metadata', 'created_at'] },
+  { sheetName: CONFIG.SHEETS.SETTINGS, headers: ['setting_key', 'setting_value', 'description', 'updated_at'] },
+  { sheetName: CONFIG.SHEETS.SEQUENCES, headers: ['sequence_name', 'current_value', 'updated_at'] }
+];
+
+/**
+ * Membuat/memverifikasi seluruh sheet database SIGAP SARPRAS beserta
+ * header-nya, dan menginisialisasi baris sequence awal pada 91_sequences
+ * (current_value = 0) untuk sequence yang belum ada.
+ *
+ * IDEMPOTENT — aman dijalankan berulang kali:
+ * - Sheet yang sudah ada dan header-nya sudah sesuai TIDAK disentuh.
+ * - Sequence yang sudah ada nilainya TIDAK PERNAH direset/diubah.
+ * - Tidak pernah ada duplikasi sheet maupun baris sequence.
+ *
+ * TIDAK PERNAH melakukan operasi destruktif (tidak ada delete/clear/
+ * overwrite data yang sudah ada). Jika suatu sheet SUDAH memiliki header
+ * yang TIDAK SESUAI schema resmi, fungsi ini TIDAK memperbaikinya secara
+ * otomatis — melainkan melempar Error "SCHEMA_MISMATCH" yang menyebutkan
+ * sheet, header yang diharapkan, dan header yang sebenarnya ditemukan,
+ * agar pengelola sistem memperbaikinya secara sadar dan manual.
+ *
+ * Pre-flight check (dilakukan SEBELUM ada perubahan apa pun): memastikan
+ * SPREADSHEET_ID tersedia, spreadsheet dapat dibuka, dan schema lokal
+ * (SETUP_DATABASE_SCHEMA_) tersedia dan tidak kosong. Jika salah satu
+ * gagal, fungsi berhenti dengan Error yang jelas SEBELUM sheet apa pun
+ * dibuat/diubah.
+ *
+ * @return {Object} Ringkasan hasil setup:
+ *   {
+ *     success: true,
+ *     status: 'DATABASE_ALREADY_READY' | 'DATABASE_SETUP_COMPLETED',
+ *     spreadsheet_id: string,
+ *     sheets_created: Array<string>,
+ *     sheets_verified: Array<string>,
+ *     sequences_created: Array<string>,
+ *     sequences_verified: Array<string>
+ *   }
+ * @throws {Error} Jika pre-flight check gagal, atau jika ditemukan satu
+ *   atau lebih SCHEMA_MISMATCH pada sheet yang sudah ada. Pemeriksaan
+ *   SCHEMA_MISMATCH dilakukan pada TAHAP VALIDASI read-only SEBELUM ada
+ *   satu sheet/sequence pun dibuat atau diubah (lihat TAHAP 1 di bawah) —
+ *   sehingga bila ada mismatch, fungsi ini berhenti TANPA melakukan
+ *   perubahan apa pun sama sekali pada run tersebut (bukan hanya
+ *   sebagian), konsisten dengan aturan PRE-FLIGHT CHECK.
+ */
+function setupDatabase() {
+  // --- PRE-FLIGHT CHECK (belum ada perubahan apa pun sampai titik ini) ---
+  var spreadsheetId = getSpreadsheetId(); // throws jika SPREADSHEET_ID belum diset
+  var spreadsheet = getSpreadsheet(); // throws jika spreadsheet tidak bisa dibuka
+  if (!SETUP_DATABASE_SCHEMA_ || SETUP_DATABASE_SCHEMA_.length === 0) {
+    throw new Error('SetupDatabase.setupDatabase: SETUP_DATABASE_SCHEMA_ kosong/tidak tersedia — tidak ada perubahan yang dilakukan.');
+  }
+
+  // --- TAHAP 1: VALIDASI read-only seluruh sheet, TIDAK ada tulis apa pun.
+  // Sheet yang belum ada atau masih kosong BUKAN mismatch (akan dibuat
+  // pada TAHAP 2) — hanya sheet yang SUDAH memiliki header namun berbeda
+  // dari schema resmi yang dihitung sebagai mismatch. Seluruh 12 sheet
+  // tetap diperiksa agar SEMUA mismatch (bila lebih dari satu) dilaporkan
+  // sekaligus dalam satu error, bukan satu per satu lewat coba-coba ulang.
+  var mismatches = [];
+  for (var i = 0; i < SETUP_DATABASE_SCHEMA_.length; i++) {
+    var mismatch = setupDatabaseValidateSheet_(spreadsheet, SETUP_DATABASE_SCHEMA_[i]);
+    if (mismatch) {
+      mismatches.push(mismatch);
+    }
+  }
+
+  if (mismatches.length > 0) {
+    throw new Error(
+      'SCHEMA_MISMATCH: Ditemukan ' + mismatches.length + ' sheet dengan header tidak sesuai schema resmi ' +
+      '(docs/DATABASE_SCHEMA.md). BELUM ADA satu pun perubahan yang dilakukan pada run ini — perbaiki header ' +
+      'sheet berikut secara manual, lalu jalankan ulang setupDatabase():\n\n' + mismatches.join('\n\n')
+    );
+  }
+
+  // --- TAHAP 2: seluruh sheet TERVALIDASI konsisten — baru sekarang
+  // sheet yang belum ada dibuat, dan sheet yang kosong ditulis headernya.
+  var summary = {
+    success: true,
+    status: 'DATABASE_SETUP_COMPLETED',
+    spreadsheet_id: spreadsheetId,
+    sheets_created: [],
+    sheets_verified: [],
+    sequences_created: [],
+    sequences_verified: []
+  };
+
+  for (var j = 0; j < SETUP_DATABASE_SCHEMA_.length; j++) {
+    setupDatabaseEnsureSheet_(spreadsheet, SETUP_DATABASE_SCHEMA_[j], summary);
+  }
+
+  // --- TAHAP 3: inisialisasi sequence (sheet 91_sequences dijamin valid) ---
+  var sequenceKeys = Object.keys(CONFIG.SEQUENCES).map(function (key) { return CONFIG.SEQUENCES[key]; });
+  for (var k = 0; k < sequenceKeys.length; k++) {
+    setupDatabaseEnsureSequence_(sequenceKeys[k], summary);
+  }
+
+  if (summary.sheets_created.length === 0 && summary.sequences_created.length === 0) {
+    summary.status = 'DATABASE_ALREADY_READY';
+  }
+
+  setupDatabaseLogSummary_(summary);
+  return summary;
+}
+
+/**
+ * TAHAP VALIDASI (read-only, tidak menulis apa pun): memeriksa apakah
+ * satu sheet, JIKA sudah ada dan sudah memiliki header, sesuai schema
+ * resmi. Sheet yang belum ada atau headernya masih kosong dianggap valid
+ * pada tahap ini (bukan mismatch) — keduanya akan ditangani pada tahap
+ * penulisan oleh setupDatabaseEnsureSheet_().
+ *
+ * @param {Spreadsheet} spreadsheet Spreadsheet database aktif.
+ * @param {{sheetName: string, headers: Array<string>}} schemaEntry Entri schema satu sheet.
+ * @return {?string} Pesan deskriptif mismatch, atau null jika valid/belum ada/masih kosong.
+ * @private
+ */
+function setupDatabaseValidateSheet_(spreadsheet, schemaEntry) {
+  var sheetName = schemaEntry.sheetName;
+  var sheet = spreadsheet.getSheetByName(sheetName);
+
+  if (!sheet) {
+    return null; // belum ada — akan dibuat pada tahap penulisan, bukan mismatch
+  }
+
+  var actualHeaders = getHeaderRow_(sheet); // reuse DatabaseService.gs — lihat catatan dependency di header file ini
+
+  if (setupDatabaseIsHeaderEmpty_(actualHeaders)) {
+    return null; // ada tapi kosong — akan ditulis pada tahap penulisan, bukan mismatch
+  }
+
+  if (!setupDatabaseHeadersMatch_(schemaEntry.headers, actualHeaders)) {
+    return (
+      'Sheet "' + sheetName + '":\n' +
+      '  Expected: [' + schemaEntry.headers.join(', ') + ']\n' +
+      '  Actual:   [' + actualHeaders.join(', ') + ']'
+    );
+  }
+
+  return null;
+}
+
+/**
+ * TAHAP PENULISAN: memastikan satu sheet ada dan header-nya sesuai
+ * schema. HANYA dipanggil setelah setupDatabaseValidateSheet_() atas
+ * SELURUH sheet dipastikan tidak ada mismatch — sehingga fungsi ini
+ * hanya akan menemui dua kemungkinan: sheet belum ada (dibuat), atau
+ * sheet ada dan kosong (ditulis headernya), atau sheet ada dan sudah
+ * sesuai (diverifikasi). TIDAK PERNAH menimpa header yang sudah ada.
+ *
+ * @param {Spreadsheet} spreadsheet Spreadsheet database aktif.
+ * @param {{sheetName: string, headers: Array<string>}} schemaEntry Entri schema satu sheet.
+ * @param {Object} summary Akumulator ringkasan (dimutasi langsung).
+ * @private
+ */
+function setupDatabaseEnsureSheet_(spreadsheet, schemaEntry, summary) {
+  var sheetName = schemaEntry.sheetName;
+  var expectedHeaders = schemaEntry.headers;
+  var sheet = spreadsheet.getSheetByName(sheetName);
+
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(sheetName);
+    sheet.getRange(1, 1, 1, expectedHeaders.length).setValues([expectedHeaders]);
+    summary.sheets_created.push(sheetName);
+    Logger.log('[CREATED] Sheet "' + sheetName + '" dibuat beserta header.');
+    return;
+  }
+
+  var actualHeaders = getHeaderRow_(sheet);
+
+  if (setupDatabaseIsHeaderEmpty_(actualHeaders)) {
+    sheet.getRange(1, 1, 1, expectedHeaders.length).setValues([expectedHeaders]);
+    summary.sheets_created.push(sheetName);
+    Logger.log('[CREATED] Sheet "' + sheetName + '" sudah ada tapi kosong — header ditulis.');
+    return;
+  }
+
+  // Sudah dijamin cocok oleh setupDatabaseValidateSheet_() pada TAHAP 1.
+  summary.sheets_verified.push(sheetName);
+  Logger.log('[VERIFIED] Sheet "' + sheetName + '" sudah sesuai schema.');
+}
+
+/**
+ * Memastikan satu baris sequence ada pada 91_sequences dengan
+ * current_value awal 0. TIDAK PERNAH mengubah nilai sequence yang sudah
+ * ada.
+ *
+ * Menggunakan nama kolom canonical (`sequence_name`/`current_value`) —
+ * setupDatabase() sendiri hanya boleh berjalan pada sheet yang headernya
+ * sudah tervalidasi cocok dengan SETUP_DATABASE_SCHEMA_ (lihat TAHAP 1
+ * pada setupDatabase()), sehingga di titik ini nama kolom pasti sudah
+ * canonical. SequenceService.gs (dipakai domain service produksi)
+ * tetap punya alias resolution sendiri untuk sheet yang mungkin belum
+ * melalui setupDatabase() — lihat catatan "SEQUENCE COMPATIBILITY LAYER"
+ * pada SequenceService.gs.
+ *
+ * @param {string} sequenceKey Nama sequence, mis. CONFIG.SEQUENCES.REPORT.
+ * @param {Object} summary Akumulator ringkasan (dimutasi langsung).
+ * @private
+ */
+function setupDatabaseEnsureSequence_(sequenceKey, summary) {
+  var existing = getRowById(CONFIG.SHEETS.SEQUENCES, 'sequence_name', sequenceKey);
+
+  if (existing) {
+    summary.sequences_verified.push(sequenceKey);
+    Logger.log('[VERIFIED] Sequence "' + sequenceKey + '" sudah ada (current_value=' + existing.current_value + '), tidak diubah.');
+    return;
+  }
+
+  insertRow(CONFIG.SHEETS.SEQUENCES, {
+    sequence_name: sequenceKey,
+    current_value: 0,
+    updated_at: nowTimestamp()
+  });
+  summary.sequences_created.push(sequenceKey);
+  Logger.log('[CREATED] Sequence "' + sequenceKey + '" diinisialisasi dengan current_value=0.');
+}
+
+/**
+ * Memeriksa apakah baris header dianggap kosong (belum pernah diisi sama
+ * sekali): array kosong, atau seluruh sel header berupa string kosong.
+ *
+ * @param {Array} headers Header row hasil getHeaderRow_().
+ * @return {boolean} true jika dianggap kosong.
+ * @private
+ */
+function setupDatabaseIsHeaderEmpty_(headers) {
+  if (!headers || headers.length === 0) {
+    return true;
+  }
+  return headers.every(function (h) { return h === '' || h === null || h === undefined; });
+}
+
+/**
+ * Membandingkan header aktual dengan header yang diharapkan BERBASIS SET
+ * nama kolom (bukan urutan) — lihat catatan "PERBANDINGAN HEADER" pada
+ * header file ini untuk alasan desainnya. Kolom hilang maupun kolom asing
+ * yang tidak dikenal sama-sama dianggap tidak cocok.
+ *
+ * @param {Array<string>} expectedHeaders Header sesuai schema resmi.
+ * @param {Array<string>} actualHeaders Header yang sebenarnya ada di sheet.
+ * @return {boolean} true jika set kolom cocok persis.
+ * @private
+ */
+function setupDatabaseHeadersMatch_(expectedHeaders, actualHeaders) {
+  var normalizedExpected = expectedHeaders.filter(function (h) { return h !== '' && h !== null && h !== undefined; });
+  var normalizedActual = actualHeaders.filter(function (h) { return h !== '' && h !== null && h !== undefined; });
+
+  if (normalizedExpected.length !== normalizedActual.length) {
+    return false;
+  }
+
+  var expectedSorted = normalizedExpected.slice().sort();
+  var actualSorted = normalizedActual.slice().sort();
+
+  for (var i = 0; i < expectedSorted.length; i++) {
+    if (expectedSorted[i] !== actualSorted[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Mencetak ringkasan hasil setupDatabase() ke Logger dalam format yang
+ * mudah dibaca dari execution log Apps Script.
+ * @param {Object} summary Hasil dari setupDatabase().
+ * @private
+ */
+function setupDatabaseLogSummary_(summary) {
+  Logger.log('==============================================');
+  Logger.log('SIGAP SARPRAS — DATABASE SETUP SUMMARY');
+  Logger.log('==============================================');
+  Logger.log('Status           : ' + summary.status);
+  Logger.log('Spreadsheet ID   : ' + summary.spreadsheet_id);
+  Logger.log('Sheets dibuat    : ' + summary.sheets_created.length + (summary.sheets_created.length ? ' (' + summary.sheets_created.join(', ') + ')' : ''));
+  Logger.log('Sheets terverifikasi : ' + summary.sheets_verified.length);
+  Logger.log('Sequence dibuat  : ' + summary.sequences_created.length + (summary.sequences_created.length ? ' (' + summary.sequences_created.join(', ') + ')' : ''));
+  Logger.log('Sequence terverifikasi : ' + summary.sequences_verified.length);
+  Logger.log('==============================================');
+}
+
+/**
+ * Memverifikasi setup database TANPA mengubah apa pun (read-only).
+ * Memeriksa keberadaan dan kesesuaian header seluruh sheet, serta
+ * keberadaan seluruh baris sequence yang dibutuhkan sistem. Selalu
+ * mengembalikan laporan terstruktur — tidak pernah melempar Error, agar
+ * dapat dipakai sebagai pemeriksaan rutin yang aman.
+ *
+ * @return {{success: boolean, sheets: Array<Object>, sequences: Array<Object>}}
+ *   Laporan PASS/FAIL per sheet dan per sequence.
+ */
+function verifyDatabaseSetup() {
+  var sheetResults = [];
+  var sequenceResults = [];
+  var spreadsheet;
+
+  try {
+    spreadsheet = getSpreadsheet();
+  } catch (e) {
+    Logger.log('[FAIL] Tidak dapat membuka spreadsheet: ' + e.message);
+    var failureReport = { success: false, sheets: [], sequences: [], detail: e.message };
+    verifyDatabaseLogReport_(failureReport);
+    return failureReport;
+  }
+
+  var sequencesSheetOk = true;
+
+  for (var i = 0; i < SETUP_DATABASE_SCHEMA_.length; i++) {
+    var result = verifyDatabaseCheckSheet_(spreadsheet, SETUP_DATABASE_SCHEMA_[i]);
+    sheetResults.push(result);
+    if (SETUP_DATABASE_SCHEMA_[i].sheetName === CONFIG.SHEETS.SEQUENCES && result.status !== 'PASS') {
+      sequencesSheetOk = false;
+    }
+  }
+
+  var sequenceKeys = Object.keys(CONFIG.SEQUENCES).map(function (key) { return CONFIG.SEQUENCES[key]; });
+  for (var j = 0; j < sequenceKeys.length; j++) {
+    sequenceResults.push(verifyDatabaseCheckSequence_(sequenceKeys[j], sequencesSheetOk));
+  }
+
+  var allPassed = sheetResults.concat(sequenceResults).every(function (r) { return r.status === 'PASS'; });
+  var report = { success: allPassed, sheets: sheetResults, sequences: sequenceResults };
+  verifyDatabaseLogReport_(report);
+  return report;
+}
+
+/**
+ * Memeriksa satu sheet: keberadaan dan kesesuaian header. Tidak mengubah
+ * apa pun.
+ * @param {Spreadsheet} spreadsheet Spreadsheet database aktif.
+ * @param {{sheetName: string, headers: Array<string>}} schemaEntry Entri schema satu sheet.
+ * @return {{name: string, status: string, detail: string}} Hasil pemeriksaan.
+ * @private
+ */
+function verifyDatabaseCheckSheet_(spreadsheet, schemaEntry) {
+  var sheetName = schemaEntry.sheetName;
+  var sheet = spreadsheet.getSheetByName(sheetName);
+
+  if (!sheet) {
+    return { name: sheetName, status: 'FAIL', detail: 'Sheet tidak ditemukan.' };
+  }
+
+  var actualHeaders = getHeaderRow_(sheet);
+
+  if (setupDatabaseIsHeaderEmpty_(actualHeaders)) {
+    return { name: sheetName, status: 'FAIL', detail: 'Sheet ada tetapi header kosong.' };
+  }
+
+  if (!setupDatabaseHeadersMatch_(schemaEntry.headers, actualHeaders)) {
+    return {
+      name: sheetName,
+      status: 'FAIL',
+      detail: 'Header tidak sesuai. Expected: [' + schemaEntry.headers.join(', ') + '], Actual: [' + actualHeaders.join(', ') + ']'
+    };
+  }
+
+  return { name: sheetName, status: 'PASS', detail: '' };
+}
+
+/**
+ * Memeriksa satu sequence: apakah barisnya sudah ada pada 91_sequences.
+ * Tidak mengubah apa pun.
+ * @param {string} sequenceKey Nama sequence.
+ * @param {boolean} sequencesSheetOk Apakah sheet 91_sequences sendiri
+ *   lolos pemeriksaan header (jika false, pemeriksaan ini dilewati agar
+ *   tidak memanggil getRowById() pada sheet yang berpotensi tidak valid).
+ * @return {{name: string, status: string, detail: string}} Hasil pemeriksaan.
+ * @private
+ */
+function verifyDatabaseCheckSequence_(sequenceKey, sequencesSheetOk) {
+  if (!sequencesSheetOk) {
+    return { name: sequenceKey, status: 'FAIL', detail: 'Dilewati — sheet 91_sequences tidak valid.' };
+  }
+
+  var existing = getRowById(CONFIG.SHEETS.SEQUENCES, 'sequence_name', sequenceKey);
+
+  if (!existing) {
+    return { name: sequenceKey, status: 'FAIL', detail: 'Baris sequence belum ada.' };
+  }
+
+  return { name: sequenceKey, status: 'PASS', detail: 'current_value=' + existing.current_value };
+}
+
+/**
+ * Mencetak laporan verifyDatabaseSetup() ke Logger dalam format tabel
+ * sederhana yang mudah dibaca dari execution log Apps Script.
+ * @param {{success: boolean, sheets: Array<Object>, sequences: Array<Object>, detail: (string|undefined)}} report
+ * @private
+ */
+function verifyDatabaseLogReport_(report) {
+  var NAME_COLUMN_WIDTH = 22;
+
+  function padName(name) {
+    return (name + '                        ').substring(0, NAME_COLUMN_WIDTH);
+  }
+
+  Logger.log('==============================================');
+  Logger.log('DATABASE SETUP VERIFICATION');
+  Logger.log('==============================================');
+
+  if (report.detail && report.sheets.length === 0) {
+    Logger.log('[FAIL] ' + report.detail);
+    Logger.log('==============================================');
+    return;
+  }
+
+  for (var i = 0; i < report.sheets.length; i++) {
+    var s = report.sheets[i];
+    Logger.log(padName(s.name) + s.status + (s.status === 'FAIL' ? ' - ' + s.detail : ''));
+  }
+
+  Logger.log('');
+
+  for (var j = 0; j < report.sequences.length; j++) {
+    var seq = report.sequences[j];
+    Logger.log(padName(seq.name + ' sequence') + seq.status + (seq.status === 'FAIL' ? ' - ' + seq.detail : ''));
+  }
+
+  Logger.log('==============================================');
+  Logger.log('Overall: ' + (report.success ? 'PASS' : 'FAIL'));
+  Logger.log('==============================================');
 }
 
 

@@ -1,13 +1,13 @@
 /**
  * ReportApi.gs
  *
- * Fungsi PUBLIK yang dipanggil dari client (Index.html) lewat
- * google.script.run — lapisan entry point sesuai docs/ARCHITECTURE.md
- * ("Google Apps Script — lapisan entry point ... yang menerima permintaan
- * dan meneruskannya ke Service Layer"). Modul ini TIDAK berisi logika
- * bisnis apa pun — hanya: (1) mengidentifikasi pemanggil lewat
- * AuthContext.gs, (2) meneruskan ke apps-script/reports/*.gs, (3)
- * membungkus hasil/errornya lewat ApiUtil.gs.
+ * Fungsi PUBLIK yang dipanggil dari frontend (lihat frontend/, di luar
+ * project Apps Script ini) lewat apps-script/api/App.gs (doGet/doPost JSON
+ * router) — lapisan entry point sesuai docs/ARCHITECTURE.md. Modul ini
+ * TIDAK berisi logika bisnis apa pun — hanya: (1) mengidentifikasi pemanggil
+ * lewat AuthContext.gs (token sesi, BUKAN lagi Session.getActiveUser() —
+ * lihat catatan PERUBAHAN ARSITEKTUR di AuthContext.gs), (2) meneruskan ke
+ * apps-script/reports/*.gs, (3) membungkus hasil/errornya lewat ApiUtil.gs.
  *
  * Setiap fungsi di sini TETAP mematuhi docs/ARCHITECTURE.md bagian 4 —
  * TIDAK memanggil SpreadsheetApp/getSpreadsheet() maupun DatabaseService
@@ -16,7 +16,7 @@
  *
  * Dependency:
  * - core/Config.gs (CONFIG.REPORT_STATUS)
- * - apps-script/api/AuthContext.gs (getCurrentUserContext_, requireRole_,
+ * - apps-script/api/AuthContext.gs (requireSession_, requireRole_,
  *   getWorkflowAllowedRoles_)
  * - apps-script/api/ApiUtil.gs (apiRun_)
  * - apps-script/reports/ReportService.gs (createReport, getReportById,
@@ -28,33 +28,15 @@
  */
 
 /**
- * Mengembalikan data pengguna yang sedang login (untuk ditampilkan di UI
- * dan menentukan kontrol mana yang ditampilkan, mis. tombol ubah status).
+ * Membuat laporan baru. reporter_id SELALU diambil dari sesi aktif (TIDAK
+ * bisa dikirim/dipalsukan dari client).
+ * @param {string} token Token sesi.
+ * @param {Object} payload Field laporan (lihat ReportService.createReport), TANPA reporter_id.
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiGetCurrentUser() {
+function apiCreateReport(token, payload) {
   return apiRun_(function () {
-    var user = getCurrentUserContext_();
-    return {
-      user_id: user.user_id,
-      full_name: user.full_name,
-      email: user.email,
-      role: user.role,
-      can_manage_workflow: getWorkflowAllowedRoles_().indexOf(user.role) !== -1
-    };
-  });
-}
-
-/**
- * Membuat laporan baru. reporter_id SELALU diambil dari sesi Google aktif
- * (TIDAK bisa dikirim/dipalsukan dari client).
- * @param {Object} payload Field laporan (lihat ReportService.createReport),
- *   TANPA reporter_id.
- * @return {{success: boolean, data: *, error: ?Object}}
- */
-function apiCreateReport(payload) {
-  return apiRun_(function () {
-    var user = getCurrentUserContext_();
+    var user = requireSession_(token);
     payload = payload || {};
     return createReport({
       reporter_id: user.user_id,
@@ -73,12 +55,13 @@ function apiCreateReport(payload) {
 /**
  * Mengambil daftar laporan aktif. Jika status diisi, hanya laporan dengan
  * status tersebut yang dikembalikan.
+ * @param {string} token Token sesi.
  * @param {string} [status] Salah satu CONFIG.REPORT_STATUS (opsional).
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiListReports(status) {
+function apiListReports(token, status) {
   return apiRun_(function () {
-    getCurrentUserContext_();
+    requireSession_(token);
     if (!status) {
       return listActiveReports();
     }
@@ -88,12 +71,13 @@ function apiListReports(status) {
 
 /**
  * Mengambil satu laporan berdasarkan report_id.
+ * @param {string} token Token sesi.
  * @param {string} reportId ID laporan.
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiGetReport(reportId) {
+function apiGetReport(token, reportId) {
   return apiRun_(function () {
-    getCurrentUserContext_();
+    requireSession_(token);
     var report = getReportById(reportId);
     if (!report) {
       throw new Error('Laporan tidak ditemukan: "' + reportId + '".');
@@ -104,26 +88,28 @@ function apiGetReport(reportId) {
 
 /**
  * Mengambil riwayat perubahan suatu laporan.
+ * @param {string} token Token sesi.
  * @param {string} reportId ID laporan.
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiListReportHistory(reportId) {
+function apiListReportHistory(token, reportId) {
   return apiRun_(function () {
-    getCurrentUserContext_();
+    requireSession_(token);
     return listReportHistory(reportId);
   });
 }
 
 /**
- * Memperbarui data laporan (bukan status). performed_by SELALU diambil
- * dari sesi Google aktif.
+ * Memperbarui data laporan (bukan status). performed_by SELALU diambil dari
+ * sesi aktif.
+ * @param {string} token Token sesi.
  * @param {string} reportId ID laporan.
  * @param {Object} updates Kolom yang diperbarui (lihat ReportService.updateReport).
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiUpdateReport(reportId, updates) {
+function apiUpdateReport(token, reportId, updates) {
   return apiRun_(function () {
-    var user = getCurrentUserContext_();
+    var user = requireSession_(token);
     updates = updates || {};
     updates.performed_by = user.user_id;
     return updateReport(reportId, updates);
@@ -132,16 +118,16 @@ function apiUpdateReport(reportId, updates) {
 
 /**
  * Mengubah status laporan. HANYA dapat dipanggil oleh peran
- * VERIFIKATOR/OWNER/ADMIN (lihat catatan OPEN DESIGN DECISION pada
- * AuthContext.gs). performed_by SELALU diambil dari sesi Google aktif.
+ * VERIFIKATOR/OWNER/ADMIN. performed_by SELALU diambil dari sesi aktif.
+ * @param {string} token Token sesi.
  * @param {string} reportId ID laporan.
  * @param {string} newStatus Status tujuan, salah satu CONFIG.REPORT_STATUS.
  * @param {string} [notes] Catatan tambahan (opsional).
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiChangeReportStatus(reportId, newStatus, notes) {
+function apiChangeReportStatus(token, reportId, newStatus, notes) {
   return apiRun_(function () {
-    var user = getCurrentUserContext_();
+    var user = requireSession_(token);
     requireRole_(user, getWorkflowAllowedRoles_());
     return changeReportStatus(reportId, newStatus, { performed_by: user.user_id, notes: notes });
   });
@@ -150,12 +136,13 @@ function apiChangeReportStatus(reportId, newStatus, notes) {
 /**
  * Menonaktifkan laporan (soft delete). HANYA dapat dipanggil oleh peran
  * VERIFIKATOR/OWNER/ADMIN.
+ * @param {string} token Token sesi.
  * @param {string} reportId ID laporan.
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiDeactivateReport(reportId) {
+function apiDeactivateReport(token, reportId) {
   return apiRun_(function () {
-    var user = getCurrentUserContext_();
+    var user = requireSession_(token);
     requireRole_(user, getWorkflowAllowedRoles_());
     return deactivateReport(reportId, user.user_id);
   });
@@ -163,13 +150,15 @@ function apiDeactivateReport(reportId) {
 
 /**
  * Mengembalikan urutan status workflow kanonik (untuk UI, mis. dropdown
- * status tujuan) — HANYA untuk kebutuhan tampilan. Legalitas transisi
- * TETAP divalidasi ulang di server oleh ReportWorkflowService.changeReportStatus(),
+ * status tujuan) — HANYA untuk kebutuhan tampilan. Legalitas transisi TETAP
+ * divalidasi ulang di server oleh ReportWorkflowService.changeReportStatus(),
  * client tidak boleh dipercaya untuk memutuskan transisi mana yang sah.
+ * @param {string} token Token sesi.
  * @return {{success: boolean, data: *, error: ?Object}}
  */
-function apiGetReportStatusOptions() {
+function apiGetReportStatusOptions(token) {
   return apiRun_(function () {
+    requireSession_(token);
     return [
       CONFIG.REPORT_STATUS.SUBMITTED,
       CONFIG.REPORT_STATUS.VERIFIED,

@@ -32,9 +32,26 @@ Menyimpan data pengguna sistem.
 | `student_id` | Nomor induk siswa (khusus role siswa, dapat kosong untuk role lain) |
 | `class_name` | Nama kelas (khusus role siswa, dapat kosong untuk role lain) |
 | `owner_id` | Referensi ke `05_owners`, apabila pengguna terasosiasi dengan suatu unit penanggung jawab |
+| `password_hash` | Hash SHA-256 (salted) dari password login pengguna. Dikelola HANYA oleh `apps-script/auth/AuthService.gs` — lihat "Perubahan Skema — Autentikasi" di bawah. Kosong untuk baris lama/pengguna yang belum diberi password. |
+| `password_salt` | Salt acak (UUID) unik per pengguna, dipakai bersama `password_hash`. Dikelola HANYA oleh `AuthService.gs`. |
 | `is_active` | Status aktif/nonaktif akun pengguna |
 | `created_at` | Waktu data dibuat |
 | `updated_at` | Waktu data terakhir diperbarui |
+
+**Perubahan Skema — Autentikasi (menggantikan PHASE 4.5 Google SSO):**
+`password_hash`/`password_salt` adalah kolom **baru, additive** — ditambahkan
+saat frontend dipindah ke hosting terpisah dan sistem login beralih dari sesi
+Google Workspace (`Session.getActiveUser()`) ke username(email)/password +
+token sesi (lihat `apps-script/auth/README.md`,
+`apps-script/api/AuthContext.gs`). **Tidak ada migrasi data** — baris
+pengguna yang sudah ada sebelum perubahan ini memiliki kedua kolom tersebut
+KOSONG dan tidak bisa login sampai seorang ADMIN menetapkan password awal
+lewat `apiSetPassword` (lihat `docs/DATABASE_SETUP.md` untuk langkah
+bootstrap). Kolom ini WAJIB ditambahkan secara manual ke sheet `01_users`
+yang sudah ada di spreadsheet produksi — `apps-script/tools/SetupDatabase.gs`
+tidak menjalankan migrasi otomatis. `apps-script/users/UserService.gs`
+sengaja TIDAK menyentuh dua kolom ini (lihat header filenya) — hanya
+`AuthService.gs` yang boleh menulis ke keduanya.
 
 ### `02_locations`
 

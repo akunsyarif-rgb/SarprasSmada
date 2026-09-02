@@ -34,9 +34,10 @@ Setiap transisi status harus melalui validasi eksplisit. Transisi yang tidak ses
 
 ## Teknologi Utama
 
-- **Google Apps Script** — platform eksekusi backend berbasis JavaScript yang berjalan di lingkungan Google.
+- **Google Apps Script** — platform eksekusi backend berbasis JavaScript yang berjalan di lingkungan Google, dideploy lewat `clasp` ([`docs/GAS_CLASP_DEPLOY.md`](docs/GAS_CLASP_DEPLOY.md), butuh terminal) atau manual lewat Safari/browser tanpa command line sama sekali ([`docs/GAS_MANUAL_DEPLOY.md`](docs/GAS_MANUAL_DEPLOY.md), cocok untuk operator yang hanya punya iPad).
 - **Google Spreadsheet** — digunakan sebagai media penyimpanan data (database) sistem.
 - **Service-based Architecture** — backend disusun dalam bentuk layanan (service) yang terpisah berdasarkan domain, untuk menjaga pemisahan tanggung jawab antara akses data dan logika bisnis.
+- **Frontend statis tanpa build step** (`frontend/`) — React tanpa JSX/bundler, di-hosting terpisah dari project Apps Script, berkomunikasi lewat JSON API bertoken (`fetch()` ke `apps-script/api/App.gs`). Pola yang sama dengan aplikasi SIGAP: penyimpanan di Spreadsheet, "sisanya" (frontend + tooling deploy) di GitHub.
 
 Detail lengkap arsitektur sistem dapat dilihat pada [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -53,18 +54,22 @@ SarprasSmada/
 ├── apps-script/                   Source code backend Google Apps Script
 │   ├── README.md
 │   ├── core/                      Konfigurasi, akses database, sequence, utilitas
-│   ├── users/                     Domain pengguna
+│   ├── auth/                      Autentikasi (login/password/sesi bertoken)
+│   ├── users/                     Domain data pengguna
 │   ├── master-data/               Domain data master (lokasi, kategori, fasilitas, owner)
 │   ├── reports/                   Domain pelaporan & workflow
 │   ├── audit/                     Domain audit log
+│   ├── api/                       JSON API bertoken (doGet/doPost), dipanggil frontend/
 │   └── tests/                     Pengujian backend
-├── frontend/                      Placeholder aplikasi frontend (belum dikembangkan)
+├── frontend/                      Aplikasi frontend statis (React tanpa build step)
+├── .clasp.json.example            Template konfigurasi clasp (salin ke .clasp.json)
+├── package.json                   Script npm untuk deploy backend via clasp
 └── .gitignore
 ```
 
 ## Status Pengembangan Saat Ini
 
-Repository berada pada tahap **PHASE 4.5 — MVP Usability** (lihat [`docs/DEVELOPMENT_ROADMAP.md`](docs/DEVELOPMENT_ROADMAP.md)). Sistem sudah dapat **dibuka dan diuji pengguna nyata** lewat URL Web App (lihat [`apps-script/api/README.md`](apps-script/api/README.md)), bukan hanya berfungsi lewat editor Apps Script.
+Repository berada pada tahap **PHASE 4.75 — Decoupled Frontend & Token Authentication** (lihat [`docs/DEVELOPMENT_ROADMAP.md`](docs/DEVELOPMENT_ROADMAP.md)). Sistem sudah punya frontend fungsional (`frontend/`) yang terpisah dari backend, dideploy independen — persis pola yang diminta: penyimpanan di Google Spreadsheet, sisanya di GitHub. Lihat [`docs/GAS_CLASP_DEPLOY.md`](docs/GAS_CLASP_DEPLOY.md) (butuh terminal) atau [`docs/GAS_MANUAL_DEPLOY.md`](docs/GAS_MANUAL_DEPLOY.md) (cukup Safari/browser, tanpa command line) untuk cara deploy backend, dan [`frontend/README.md`](frontend/README.md) untuk cara deploy frontend.
 
 Yang sudah selesai:
 
@@ -75,6 +80,7 @@ Yang sudah selesai:
 - **PHASE 3.5 — Real Environment Validation**: inspeksi read-only nyata (`apps-script/tools/InspectDatabase.gs`, `DatabaseInspectorStandalone.gs`) terhadap database produksi SIGAP SARPRAS yang sudah berjalan sejak sebelum repository ini dibuat.
 - **PHASE 3.75 — Legacy-Compatible Repository Reconciliation**: schema `11_report_photos`, `12_report_history`, `13_report_comments`, `20_audit_logs`, `91_sequences` diselaraskan mengikuti struktur produksi nyata (lihat "Reconciliation Notes" di `docs/DATABASE_SCHEMA.md`); `SequenceService.gs` kini punya sequence compatibility layer (alias resolution `sequence_name`/`sequence_key`, `current_value`/`last_value`) — **tidak ada migrasi spreadsheet**, hanya repository yang diselaraskan.
 - **PHASE 4 — Legacy-Compatible Report Engine**: implementasi `apps-script/reports/` — `ReportService.gs` (Create/Retrieval/Listing/Update Report dengan validasi referensi berlapis: strict saat data baru dibuat/diubah, tanpa validasi saat membaca data legacy yang orphan), `ReportWorkflowService.gs` (transisi status sesuai `docs/WORKFLOW.md`), `ReportHistoryService.gs` (riwayat perubahan ke `12_report_history`). Lengkap dengan smoke test (`apps-script/tests/ReportEngineSmokeTest.gs`). **Tidak termasuk**: perhitungan `system_priority` otomatis (OPEN DESIGN DECISION — belum ada algoritma kanonik), Photo/Comment Engine, RBAC penuh, dan audit log — seluruhnya dijadwalkan PHASE 5.
-- **PHASE 4.5 — MVP Usability**: penambahan `apps-script/api/` — Web App entry point (`App.gs`/`doGet`) yang menyajikan halaman uji coba minimal (`Index.html`), identifikasi pengguna dari sesi Google aktif + otorisasi MINIMAL berbasis peran (`AuthContext.gs`: hanya VERIFIKATOR/OWNER/ADMIN dapat mengubah status/menonaktifkan laporan), dan fungsi publik `google.script.run` (`ReportApi.gs`, `MasterDataApi.gs`). Ditambahkan di luar urutan roadmap awal, atas prioritas eksplisit: sistem harus benar-benar dapat dijalankan dan diuji oleh pengguna nyata sesegera mungkin. **Bukan** frontend final PHASE 7.
+- **PHASE 4.5 — MVP Usability**: penambahan `apps-script/api/` — Web App entry point yang menyajikan halaman uji coba minimal (`google.script.run` + sesi Google aktif). **Digantikan PHASE 4.75** (lihat berikutnya) — `Index.html` dan pola `google.script.run` sudah dihapus.
+- **PHASE 4.75 — Decoupled Frontend & Token Authentication**: frontend statis (`frontend/`) di-hosting terpisah dari project Apps Script, berkomunikasi lewat JSON API bertoken (`apps-script/api/App.gs`, `doGet`/`doPost`). Autentikasi beralih dari sesi Google (`Session.getActiveUser()`) ke username(email)/password + sesi bertoken (domain baru `apps-script/auth/`). Mencakup seluruh fitur backend yang sudah ada (laporan, workflow, data master, pengguna). Tooling deploy backend lewat `clasp` ditambahkan (lihat `docs/GAS_CLASP_DEPLOY.md`). Ditambahkan di luar urutan roadmap awal, menuntaskan **PHASE 7 — Frontend** secara fungsional lebih awal (desain/UX belum digarap). **Perilaku CORS Web App dari origin terpisah belum diverifikasi end-to-end** — lihat `frontend/README.md`.
 
-**Audit, RBAC penuh, Photo/Comment Engine, dan frontend final PHASE 7 belum diimplementasikan.** Detail lengkap fase pengembangan berikutnya dapat dilihat pada dokumen roadmap.
+**Audit, RBAC penuh, Photo/Comment Engine, dan desain/UX frontend final belum diimplementasikan.** Detail lengkap fase pengembangan berikutnya dapat dilihat pada dokumen roadmap.

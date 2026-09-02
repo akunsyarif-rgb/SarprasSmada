@@ -25,7 +25,20 @@
 var CONFIG = {
   /** Key Script Properties yang digunakan sistem. */
   SCRIPT_PROPERTY_KEYS: {
-    SPREADSHEET_ID: 'SPREADSHEET_ID'
+    SPREADSHEET_ID: 'SPREADSHEET_ID',
+    /**
+     * Token statis bersama antara frontend (apps-script/../frontend/, di
+     * luar project Apps Script ini) dan Web App ini sendiri. BUKAN
+     * pengganti login pengguna — hanya gerbang pertama yang menolak
+     * request tanpa token sebelum request itu sempat menyentuh
+     * AuthService/DatabaseService sama sekali (lihat api/App.gs
+     * checkToken_()). Wajib diset manual lewat Script Properties, TIDAK
+     * PERNAH di-hardcode di kode (nilainya juga dikirim ke browser lewat
+     * frontend/config.js, jadi tetap bukan rahasia yang benar-benar aman
+     * — keamanan akses pengguna sesungguhnya ada di AuthService, bukan
+     * token ini).
+     */
+    API_TOKEN: 'API_TOKEN'
   },
 
   /** Timezone resmi yang digunakan seluruh sistem untuk pencatatan waktu. */
@@ -140,6 +153,31 @@ function getSpreadsheetId() {
   }
 
   return spreadsheetId;
+}
+
+/**
+ * Mengambil token API statis (lihat CONFIG.SCRIPT_PROPERTY_KEYS.API_TOKEN)
+ * dari Script Properties. Dipakai oleh apps-script/api/App.gs untuk
+ * menolak request yang tidak menyertakan token sebelum request diproses
+ * lebih jauh.
+ *
+ * @return {string} Token API.
+ * @throws {Error} Jika Script Property API_TOKEN belum diset.
+ */
+function getApiToken() {
+  var token = PropertiesService.getScriptProperties()
+    .getProperty(CONFIG.SCRIPT_PROPERTY_KEYS.API_TOKEN);
+
+  if (!token) {
+    throw new Error(
+      'Config.getApiToken: Script Property "' +
+      CONFIG.SCRIPT_PROPERTY_KEYS.API_TOKEN +
+      '" belum diset. Set nilainya melalui Project Settings > Script Properties ' +
+      'sebelum menjalankan sistem.'
+    );
+  }
+
+  return token;
 }
 
 /**

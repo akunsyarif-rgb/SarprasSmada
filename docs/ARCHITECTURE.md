@@ -19,8 +19,8 @@ Google Spreadsheet (Database)
 Penjelasan tiap lapisan:
 
 - **User** — warga sekolah (siswa, guru, staf, penanggung jawab sarana-prasarana) yang berinteraksi dengan sistem.
-- **Frontend Application** — antarmuka final yang digunakan pengguna untuk mengirim laporan dan memantau status, dijadwalkan **PHASE 7** (lihat `frontend/README.md`). Sebagai MVP sementara (**PHASE 4.5**), `apps-script/api/Index.html` menyajikan halaman uji coba minimal agar sistem sudah dapat dibuka dan diuji pengguna nyata lebih awal — lihat `apps-script/api/README.md`.
-- **Google Apps Script** — lapisan entry point: `apps-script/api/App.gs` (`doGet`) menyajikan `Index.html`, yang lalu memanggil fungsi publik pada `apps-script/api/ReportApi.gs`/`MasterDataApi.gs` lewat `google.script.run` — inilah "fungsi yang dipanggil frontend" yang meneruskan permintaan ke Service Layer. `apps-script/api/AuthContext.gs` mengidentifikasi pemanggil dari sesi Google aktif sebelum permintaan diteruskan.
+- **Frontend Application** — `frontend/`, aplikasi statis (React tanpa build step, lihat `frontend/README.md`) di-hosting TERPISAH dari project Apps Script (mis. Vercel/GitHub Pages), berkomunikasi lewat `fetch()` ke JSON API `apps-script/api/App.gs`. Menggantikan `apps-script/api/Index.html` (test harness PHASE 4.5, memakai `google.script.run`, SUDAH DIHAPUS) sebagai satu-satunya cara pengguna nyata memakai sistem — perubahan ini sekaligus menuntaskan **PHASE 7** lebih awal dari urutan roadmap asli (lihat `docs/DEVELOPMENT_ROADMAP.md`), atas alasan yang sama dengan PHASE 4.5: sistem harus benar-benar dapat dijalankan, bukan cuma berfungsi secara teoritis.
+- **Google Apps Script** — lapisan entry point: `apps-script/api/App.gs` (`doGet`/`doPost`) menerima request JSON bertoken dari `frontend/`, lalu memanggil fungsi publik pada `apps-script/api/*Api.gs` — inilah "fungsi yang dipanggil frontend" yang meneruskan permintaan ke Service Layer. `apps-script/api/AuthContext.gs` mengidentifikasi pemanggil dari **token sesi** (`apps-script/auth/AuthService.gs`, BUKAN lagi sesi Google aktif — lihat catatan PERUBAHAN ARSITEKTUR di kedua file tersebut) sebelum permintaan diteruskan.
 - **Service Layer** — kumpulan modul (`.gs`) yang berisi logika bisnis, dikelompokkan berdasarkan domain. Service Layer tidak boleh mengakses spreadsheet secara langsung, melainkan melalui `DatabaseService`.
 - **Google Spreadsheet** — media penyimpanan data terstruktur dalam bentuk sheet, masing-masing merepresentasikan satu entitas/tabel (lihat `docs/DATABASE_SCHEMA.md`).
 
@@ -36,6 +36,18 @@ Modul dasar yang digunakan oleh seluruh domain lain.
 - **Database Access** (`DatabaseService.gs`) — satu-satunya lapisan yang berkomunikasi langsung dengan Google Spreadsheet (baca, tulis, cari, filter baris). Seluruh domain lain wajib mengakses data melalui service ini, tidak diperkenankan memanggil `SpreadsheetApp` secara langsung dari luar `core/`.
 - **Sequence Generation** (`SequenceService.gs`) — bertanggung jawab menghasilkan ID unik dan nomor urut (mis. nomor laporan) secara konsisten dan bebas duplikasi, mengacu pada sheet `91_sequences`.
 - **Utility** (`UtilityService.gs`) — fungsi bantu lintas domain (format tanggal, validasi umum, pembuatan response, dsb.) yang tidak spesifik terhadap satu domain bisnis.
+
+### AUTH (`apps-script/auth/`)
+
+Autentikasi (login/logout/password/sesi) — TERPISAH dari data pengguna
+(lihat MASTER DATA di bawah). `AuthService.gs` menangani hashing password
+(salted SHA-256), verifikasi login, pembuatan/pengambilan sesi bertoken
+(`CacheService`, TTL 6 jam), dan rate limiting percobaan login gagal.
+Menggantikan model lama (`Session.getActiveUser()`/SSO Google Workspace) —
+lihat `apps-script/auth/README.md` untuk latar belakang perubahan. Sama
+seperti domain lain, TIDAK memanggil `SpreadsheetApp` langsung — akses ke
+sheet `01_users` (kolom `password_hash`/`password_salt`) lewat
+`core/DatabaseService.gs`.
 
 ### MASTER DATA (`apps-script/master-data/` dan `apps-script/users/`)
 

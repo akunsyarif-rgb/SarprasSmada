@@ -110,8 +110,16 @@ Header wajib ditulis persis sesuai nama kolom pada [`docs/DATABASE_SCHEMA.md`](D
 
 **`01_users`**
 ```
-user_id  email  full_name  role  student_id  class_name  owner_id  is_active  created_at  updated_at
+user_id  email  full_name  role  student_id  class_name  owner_id  password_hash  password_salt  is_active  created_at  updated_at
 ```
+
+> **Perubahan Skema — Autentikasi:** `password_hash`/`password_salt` adalah
+> kolom BARU (lihat `docs/DATABASE_SCHEMA.md`). Jika sheet `01_users` Anda
+> sudah ada dari sebelumnya (spreadsheet lama), tambahkan kedua kolom ini
+> secara manual di akhir header yang sudah ada — TIDAK perlu mengisi nilainya
+> untuk baris yang sudah ada (boleh kosong; lihat bagian 10 di bawah untuk
+> cara memberi password pada pengguna). `setupDatabase()` tidak melakukan
+> migrasi ini secara otomatis untuk sheet yang sudah ada dengan header lama.
 
 **`02_locations`**
 ```
@@ -300,3 +308,51 @@ Setelah `setupDatabase()` dan `verifyDatabaseSetup()` menunjukkan hasil PASS, ja
 4. `runSequenceCompatibilitySmokeTest()` (`apps-script/tests/SequenceCompatibilitySmokeTest.gs`, PHASE 3.75) — memverifikasi SEQUENCE COMPATIBILITY LAYER pada `SequenceService.gs`: mendeteksi alias kolom (`sequence_name`/`sequence_key`, `current_value`/`last_value`) yang benar-benar dipakai sheet `91_sequences` nyata, dan memastikan baca-ubah-tulis tetap konsisten lewat kolom tersebut. Hanya memakai sequence `CORE_TEST`, aman dijalankan terhadap spreadsheet produksi.
 
 Lihat hasil eksekusi pada **View > Logs** (atau `Ctrl+Enter` di editor) setelah menjalankan masing-masing fungsi.
+
+## 10. Setup Autentikasi (Token API + Password Admin Pertama)
+
+Langkah ini WAJIB sebelum frontend (`frontend/`) dapat login — lihat
+`apps-script/auth/README.md` dan `apps-script/api/README.md` untuk latar
+belakang perubahan dari Google SSO ke username(email)/password.
+
+### 10.1 Set `API_TOKEN` pada Script Properties
+
+Sama seperti langkah `SPREADSHEET_ID` (bagian 3), tambahkan satu Script
+Property lagi:
+
+- **Property**: `API_TOKEN`
+- **Value**: string acak yang cukup panjang (mis. hasil `Utilities.getUuid()`
+  yang dijalankan sekali dari editor Apps Script, atau generator UUID
+  apa pun). Ini BUKAN password pengguna — nilainya juga akan ditulis ke
+  `frontend/config.js` (dikirim ke browser), lihat catatan di
+  `core/Config.gs` `getApiToken()`.
+
+Tanpa langkah ini, SETIAP request ke Web App (termasuk `login`) akan ditolak
+`checkToken_()` di `apps-script/api/App.gs`.
+
+### 10.2 Tetapkan Password Admin Pertama
+
+Tidak ada pendaftaran/self-service password. Password HANYA bisa ditetapkan
+lewat `AuthService.setPassword()` — tapi `apiSetPassword` (jalur normal lewat
+Web App) mensyaratkan pemanggilnya SUDAH login sebagai ADMIN, yang tentu
+belum mungkin untuk akun ADMIN pertama. Untuk akun ADMIN pertama, jalankan
+langsung dari editor Apps Script (bukan lewat Web App):
+
+1. Pastikan sudah ada baris di `01_users` dengan `role = ADMIN` dan
+   `is_active = TRUE` (buat manual di spreadsheet, atau lewat
+   `UserService.createUser()` dari editor Apps Script bila belum ada).
+2. Di editor Apps Script, jalankan fungsi berikut sekali lewat panel
+   **Run** (ganti `<user_id>` dan `<password_baru>`):
+   ```js
+   setPassword('<user_id>', '<password_baru>');
+   ```
+   (`user_id` didapat dari kolom `user_id` baris ADMIN tersebut di
+   `01_users`, BUKAN email.)
+3. Password admin pertama ini sekarang bisa dipakai login lewat frontend.
+   Untuk pengguna berikutnya, ADMIN yang sudah login dapat memakai menu
+   "Set Password" di frontend (memanggil `apiSetPassword`) — tidak perlu
+   lagi lewat editor Apps Script.
+
+Pengguna dapat mengganti password mereka sendiri kapan saja lewat menu
+"Ganti Password" di frontend (`apiChangePassword`, memverifikasi password
+lama lebih dulu).
