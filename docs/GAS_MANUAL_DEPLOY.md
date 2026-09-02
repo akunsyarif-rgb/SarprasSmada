@@ -37,6 +37,49 @@ Script dengan nama yang sama persis.
 - Anda tahu **Spreadsheet ID** database (bagian URL di antara `/d/` dan
   `/edit`, buka spreadsheet-nya di Safari untuk menyalinnya).
 
+### 0.1 Sudah punya spreadsheet dari sebelumnya? Lakukan ini dulu
+
+**Jangan asumsikan spreadsheet Anda sudah punya struktur yang cocok.**
+Sebelum lanjut ke bagian 2, periksa dulu (semua lewat Safari, tanpa command
+line):
+
+1. Buka [script.google.com](https://script.google.com) → **New project**.
+   Ini project SEMENTARA hanya untuk memeriksa — boleh dipakai lagi untuk
+   deploy sungguhan di bagian 2 nanti, tidak perlu bikin ulang.
+2. Buat 4 file `.gs` (nama persis): `core/Config`, `core/DatabaseService`,
+   `core/UtilityService`, `tools/InspectDatabase` — isinya salin dari
+   `apps-script/deployment/DEPLOYMENT_BUNDLE.txt` (bagian paling bawah
+   bundle punya 2 section tambahan bertanda "OPSIONAL", termasuk
+   `InspectDatabase.gs`).
+3. **Project Settings > Script Properties** → tambahkan `SPREADSHEET_ID` =
+   ID spreadsheet lama Anda.
+4. Kembali ke editor, pilih file `tools/InspectDatabase`, pilih fungsi
+   `inspectExistingDatabase` di dropdown pemilihan fungsi, klik **Run**.
+   Fungsi ini **100% read-only** — tidak mengubah apa pun di spreadsheet
+   Anda, aman dijalankan kapan saja.
+5. Buka **Executions** (ikon jam) untuk lihat hasilnya. Cari baris
+   `STATUS: READY / PARTIAL / MISMATCH_FOUND`.
+6. **Khusus untuk PR ini**, tidak peduli hasil STATUS-nya apa: sheet
+   `01_users` di spreadsheet lama Anda **pasti belum punya** kolom
+   `password_hash`/`password_salt` (kolom ini baru ada di PR ini, tidak
+   mungkin sudah ada di spreadsheet lama). **Tambahkan manual**: buka sheet
+   `01_users` di Google Sheets, ke kolom paling kanan yang terisi, tambahkan
+   dua header baru persis di baris 1: `password_hash` lalu `password_salt`
+   di kolom sebelahnya. Biarkan isinya kosong untuk semua baris — akan
+   terisi otomatis lewat `setPassword()` (bagian 5).
+7. Kalau STATUS bukan `READY` karena alasan LAIN (sheet hilang, kolom lain
+   yang mismatch) — **jangan lanjut dulu**, salin hasil log dari langkah 5
+   dan bagikan ke saya untuk dianalisis sebelum melangkah lebih jauh.
+   `tools/SetupDatabase.gs` (section bundle setelah `InspectDatabase.gs`)
+   aman dipakai untuk MELENGKAPI sheet yang belum ada tanpa menyentuh yang
+   sudah benar (fungsi `setupDatabase()`), tapi tidak memperbaiki mismatch
+   kolom secara otomatis.
+8. Kalau STATUS `READY` (atau `PARTIAL` karena memang ada sheet yang belum
+   dipakai, bukan mismatch) dan kolom password sudah ditambahkan — lanjut
+   ke bagian 2, PAKAI project Apps Script yang sama ini (tidak perlu buat
+   baru), tinggal tambahkan 16 file sisanya di tabel bagian 2 (4 file di
+   atas sudah dibuat).
+
 ## 1. Kenapa urutan pembuatan file penting
 
 Google Apps Script menggabungkan seluruh file `.gs` dalam satu project
