@@ -99,6 +99,20 @@ function objectToRowArray_(headers, dataObject) {
 }
 
 /**
+ * Mencegah formula injection: string berawalan = + - @ (atau tab/CR) diberi
+ * awalan apostrof sehingga disimpan Sheets sebagai teks, bukan rumus.
+ * Hanya menyentuh string; angka/boolean/Date tidak berubah.
+ * @param {*} value
+ * @return {*}
+ */
+function sanitizeCellValue_(value) {
+  if (typeof value === 'string' && /^[=+\-@\t\r]/.test(value)) {
+    return "'" + value;
+  }
+  return value;
+}
+
+/**
  * Mengambil seluruh baris data (tidak termasuk header) pada suatu sheet
  * dalam bentuk array of objects.
  *
@@ -201,7 +215,7 @@ function insertRow(sheetName, rowObject) {
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     }
 
-    var rowArray = objectToRowArray_(headers, rowObject);
+    var rowArray = objectToRowArray_(headers, rowObject).map(sanitizeCellValue_);
     sheet.appendRow(rowArray);
     return rowObject;
   } finally {
@@ -286,7 +300,7 @@ function updateRowById(sheetName, idColumn, idValue, updates) {
       }
     });
 
-    sheet.getRange(targetIndex + 2, 1, 1, headers.length).setValues([targetRow]);
+    sheet.getRange(targetIndex + 2, 1, 1, headers.length).setValues([targetRow.map(sanitizeCellValue_)]);
     return rowArrayToObject_(headers, targetRow);
   } finally {
     lock.releaseLock();

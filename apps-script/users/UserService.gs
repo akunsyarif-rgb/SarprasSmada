@@ -66,6 +66,10 @@ function createUser(userData) {
     throw new Error('UserService.createUser: "full_name" wajib diisi.');
   }
   userValidateRole_(userData.role);
+  assertMaxLength_(userData.email, 254, 'email');
+  assertMaxLength_(userData.full_name, 100, 'full_name');
+  assertMaxLength_(userData.student_id, 50, 'student_id');
+  assertMaxLength_(userData.class_name, 50, 'class_name');
 
   var timestamp = nowTimestamp();
   var newUser = {
@@ -154,6 +158,11 @@ function updateUser(userId, updates) {
   }
 
   var patch = {};
+
+  assertMaxLength_(updates.email, 254, 'email');
+  assertMaxLength_(updates.full_name, 100, 'full_name');
+  assertMaxLength_(updates.student_id, 50, 'student_id');
+  assertMaxLength_(updates.class_name, 50, 'class_name');
 
   if (Object.prototype.hasOwnProperty.call(updates, 'email')) {
     if (isEmpty(updates.email)) {

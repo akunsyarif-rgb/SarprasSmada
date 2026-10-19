@@ -125,6 +125,7 @@ function apiChangeReportStatus(token, reportId, newStatus, notes) {
   return apiRun_(function () {
     var user = requireSession_(token);
     requireRole_(user, getWorkflowAllowedRoles_());
+    assertMaxLength_(notes, 1000, 'notes');
     return changeReportStatus(reportId, newStatus, { performed_by: user.user_id, notes: notes });
   });
 }

@@ -123,3 +123,22 @@ function createErrorResponse(message, details) {
     }
   };
 }
+
+/**
+ * Memastikan nilai string (bila ada) tidak melebihi panjang maksimum.
+ * @param {*} value
+ * @param {number} max
+ * @param {string} label Nama field untuk pesan error.
+ * @throws {Error} Jika bukan string atau terlalu panjang.
+ */
+function assertMaxLength_(value, max, label) {
+  if (value === null || value === undefined || value === '') {
+    return;
+  }
+  if (typeof value !== 'string') {
+    throw new Error('"' + label + '" harus berupa teks.');
+  }
+  if (value.length > max) {
+    throw new Error('"' + label + '" maksimal ' + max + ' karakter.');
+  }
+}

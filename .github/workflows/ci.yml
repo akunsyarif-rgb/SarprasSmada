@@ -1,0 +1,20 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Cek sintaks (.gs dan frontend)
+        run: |
+          for f in $(git ls-files 'apps-script/*.gs' 'frontend/*.js'); do
+            cp "$f" "/tmp/$(basename "$f").js"
+            node --check "/tmp/$(basename "$f").js" || exit 1
+          done
+      - name: Tes logika backend
+        run: node tests/auth.test.js

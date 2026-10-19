@@ -109,6 +109,8 @@ function createReport(reportData) {
     throw new Error('ReportService.createReport: "description" wajib diisi.');
   }
 
+  assertMaxLength_(reportData.description, 2000, 'description');
+  assertMaxLength_(reportData.condition, 200, 'condition');
   reportValidateActiveUser_(reportData.reporter_id, 'reporter_id');
   reportValidateActiveLocation_(reportData.location_id);
   reportValidateActiveCategory_(reportData.category_id);
@@ -299,6 +301,7 @@ function updateReport(reportId, updates) {
   }
 
   if (Object.prototype.hasOwnProperty.call(updates, 'condition')) {
+    assertMaxLength_(updates.condition, 200, 'condition');
     patch.condition = updates.condition || '';
     changedFields.push('condition');
   }
@@ -307,6 +310,7 @@ function updateReport(reportId, updates) {
     if (isEmpty(updates.description)) {
       throw new Error('ReportService.updateReport: "description" tidak boleh dikosongkan.');
     }
+    assertMaxLength_(updates.description, 2000, 'description');
     patch.description = updates.description.trim();
     changedFields.push('description');
   }

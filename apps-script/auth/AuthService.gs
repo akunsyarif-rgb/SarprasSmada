@@ -95,7 +95,7 @@ function authGenerateSalt_() {
  * @return {string} Hash dalam bentuk heksadesimal.
  * @private
  */
-function authHashPassword_(password, salt) {
+function authLegacyHashPassword_(password, salt) {
   var digestBytes = Utilities.computeDigest(
     Utilities.DigestAlgorithm.SHA_256,
     salt + ':' + password,
@@ -105,6 +105,65 @@ function authHashPassword_(password, salt) {
     var v = (b < 0 ? b + 256 : b).toString(16);
     return v.length === 1 ? '0' + v : v;
   }).join('');
+}
+
+var AUTH_PBKDF2_ITERATIONS_ = 2000;
+var AUTH_PBKDF2_PREFIX_ = 'pbkdf2$';
+var AUTH_MAX_PASSWORD_LENGTH_ = 200;
+
+function authBytesToHex_(bytes) {
+  return bytes.map(function (b) {
+    var v = (b < 0 ? b + 256 : b).toString(16);
+    return v.length === 1 ? '0' + v : v;
+  }).join('');
+}
+
+/**
+ * PBKDF2-HMAC-SHA256 (satu blok 32 byte) — key stretching agar hash yang
+ * bocor mahal untuk di-crack. Format hasil: "pbkdf2$<iterasi>$<hex>".
+ */
+function authHashPassword_(password, salt, iterations) {
+  var rounds = iterations || AUTH_PBKDF2_ITERATIONS_;
+  var pwBytes = Utilities.newBlob(password).getBytes();
+  var saltBytes = Utilities.newBlob(salt).getBytes().concat([0, 0, 0, 1]);
+  var u = Utilities.computeHmacSha256Signature(saltBytes, pwBytes);
+  var t = u.slice();
+  for (var n = 1; n < rounds; n++) {
+    u = Utilities.computeHmacSha256Signature(u, pwBytes);
+    for (var k = 0; k < t.length; k++) {
+      t[k] = t[k] ^ u[k];
+    }
+  }
+  return AUTH_PBKDF2_PREFIX_ + rounds + '$' + authBytesToHex_(t);
+}
+
+/** Perbandingan string waktu-konstan. */
+function authConstantTimeEquals_(a, b) {
+  a = String(a);
+  b = String(b);
+  var diff = a.length ^ b.length;
+  var len = Math.max(a.length, b.length);
+  for (var i = 0; i < len; i++) {
+    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  }
+  return diff === 0;
+}
+
+/**
+ * Memverifikasi password terhadap hash tersimpan (format baru "pbkdf2$..."
+ * maupun hash SHA-256 lama).
+ * @return {boolean}
+ */
+function authVerifyPassword_(password, user) {
+  if (isEmpty(password) || String(password).length > AUTH_MAX_PASSWORD_LENGTH_) {
+    return false;
+  }
+  var stored = String(user.password_hash);
+  if (stored.indexOf(AUTH_PBKDF2_PREFIX_) === 0) {
+    var iterations = Number(stored.split('$')[1]) || AUTH_PBKDF2_ITERATIONS_;
+    return authConstantTimeEquals_(authHashPassword_(password, user.password_salt, iterations), stored);
+  }
+  return authConstantTimeEquals_(authLegacyHashPassword_(password, user.password_salt), stored);
 }
 
 /**
@@ -117,6 +176,9 @@ function authHashPassword_(password, salt) {
 function authValidatePasswordStrength_(password) {
   if (isEmpty(password)) {
     throw new Error('AuthService: password wajib diisi.');
+  }
+  if (String(password).length > AUTH_MAX_PASSWORD_LENGTH_) {
+    throw new Error('AuthService: password maksimal ' + AUTH_MAX_PASSWORD_LENGTH_ + ' karakter.');
   }
   if (password.length < AUTH_MIN_PASSWORD_LENGTH_) {
     throw new Error(
@@ -150,16 +212,17 @@ function setPassword(userId, newPassword) {
     throw new Error('AuthService.setPassword: Pengguna tidak ditemukan: "' + userId + '".');
   }
 
-  var salt = authGenerateSalt_();
-  var hash = authHashPassword_(newPassword, salt);
+  return authSanitizeUser_(setPasswordRow_(userId, newPassword));
+}
 
-  var updated = updateRowById(CONFIG.SHEETS.USERS, 'user_id', userId, {
-    password_hash: hash,
+/** Menulis hash+salt baru; mengembalikan baris user MENTAH (jangan kirim ke client). @private */
+function setPasswordRow_(userId, newPassword) {
+  var salt = authGenerateSalt_();
+  return updateRowById(CONFIG.SHEETS.USERS, 'user_id', userId, {
+    password_hash: authHashPassword_(newPassword, salt),
     password_salt: salt,
     updated_at: nowTimestamp()
   });
-
-  return authSanitizeUser_(updated);
 }
 
 /**
@@ -189,17 +252,15 @@ function login(email, password) {
     authRecordLoginFailure_(email);
     throw new Error('AuthService.login: Email atau password salah.');
   }
-  if (isEmpty(user.password_hash) || isEmpty(user.password_salt)) {
-    authRecordLoginFailure_(email);
-    throw new Error(
-      'AuthService.login: Akun ini belum memiliki password. Hubungi admin untuk menetapkan password awal.'
-    );
-  }
-
-  var computedHash = authHashPassword_(password, user.password_salt);
-  if (computedHash !== user.password_hash) {
+  // Pesan sama dengan password salah agar akun tanpa password tidak bisa dienumerasi.
+  if (isEmpty(user.password_hash) || isEmpty(user.password_salt) || !authVerifyPassword_(password, user)) {
     authRecordLoginFailure_(email);
     throw new Error('AuthService.login: Email atau password salah.');
+  }
+
+  // Upgrade otomatis hash lama (SHA-256) ke PBKDF2 setelah login berhasil.
+  if (String(user.password_hash).indexOf(AUTH_PBKDF2_PREFIX_) !== 0) {
+    user = setPasswordRow_(user.user_id, password);
   }
 
   return authCreateSession_(user);
@@ -241,7 +302,7 @@ function changePassword(userId, oldPassword, newPassword) {
   if (isEmpty(user.password_hash) || isEmpty(user.password_salt)) {
     throw new Error('AuthService.changePassword: Akun ini belum memiliki password. Hubungi admin.');
   }
-  if (isEmpty(oldPassword) || authHashPassword_(oldPassword, user.password_salt) !== user.password_hash) {
+  if (!authVerifyPassword_(oldPassword, user)) {
     throw new Error('AuthService.changePassword: Password lama salah.');
   }
 
