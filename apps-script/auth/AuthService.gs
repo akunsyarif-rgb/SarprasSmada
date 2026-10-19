@@ -75,7 +75,7 @@ var AUTH_LOGIN_RATE_WINDOW_SECONDS_ = 300; // 5 menit
 /** Batas jumlah percobaan login gagal dalam satu jendela. @private */
 var AUTH_LOGIN_RATE_MAX_FAILURES_ = 15;
 /** Key CacheService untuk counter rate limit login. @private */
-var AUTH_LOGIN_RATE_CACHE_KEY_ = 'auth_login_failures';
+var AUTH_LOGIN_RATE_CACHE_KEY_ = 'auth_login_failures_';
 /** Prefix key CacheService untuk record sesi. @private */
 var AUTH_SESSION_CACHE_PREFIX_ = 'auth_session_';
 
@@ -174,23 +174,23 @@ function setPassword(userId, newPassword) {
  *   men-set lebih dulu), atau password salah.
  */
 function login(email, password) {
-  if (authIsLoginRateLimited_()) {
+  if (authIsLoginRateLimited_(email)) {
     throw new Error(
       'AuthService.login: Terlalu banyak percobaan login gagal. Coba lagi setelah beberapa menit.'
     );
   }
   if (isEmpty(email) || isEmpty(password)) {
-    authRecordLoginFailure_();
+    authRecordLoginFailure_(email);
     throw new Error('AuthService.login: Email dan password wajib diisi.');
   }
 
   var user = getUserByEmail(email);
   if (!user || user.is_active !== true) {
-    authRecordLoginFailure_();
+    authRecordLoginFailure_(email);
     throw new Error('AuthService.login: Email atau password salah.');
   }
   if (isEmpty(user.password_hash) || isEmpty(user.password_salt)) {
-    authRecordLoginFailure_();
+    authRecordLoginFailure_(email);
     throw new Error(
       'AuthService.login: Akun ini belum memiliki password. Hubungi admin untuk menetapkan password awal.'
     );
@@ -198,7 +198,7 @@ function login(email, password) {
 
   var computedHash = authHashPassword_(password, user.password_salt);
   if (computedHash !== user.password_hash) {
-    authRecordLoginFailure_();
+    authRecordLoginFailure_(email);
     throw new Error('AuthService.login: Email atau password salah.');
   }
 
@@ -285,8 +285,16 @@ function getSessionUser(token) {
     return null;
   }
 
+  // Snapshot di cache tidak dipercaya untuk role/is_active: baca ulang dari
+  // sheet agar penonaktifan/perubahan role langsung berlaku.
+  var fresh = getRowById(CONFIG.SHEETS.USERS, 'user_id', record.user.user_id);
+  if (!fresh || fresh.is_active !== true) {
+    cache.remove(cacheKey);
+    return null;
+  }
+
   cache.put(cacheKey, raw, Math.ceil(remainingSeconds));
-  return record.user;
+  return authSanitizeUser_(fresh);
 }
 
 /**
@@ -345,9 +353,18 @@ function authSanitizeUser_(user) {
  * @return {boolean} true jika rate limit tercapai.
  * @private
  */
-function authIsLoginRateLimited_() {
+function authLoginRateKey_(email) {
+  var normalized = isEmpty(email) ? '' : String(email).trim().toLowerCase();
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, normalized, Utilities.Charset.UTF_8);
+  return AUTH_LOGIN_RATE_CACHE_KEY_ + bytes.map(function (b) {
+    var v = (b < 0 ? b + 256 : b).toString(16);
+    return v.length === 1 ? '0' + v : v;
+  }).join('').substring(0, 32);
+}
+
+function authIsLoginRateLimited_(email) {
   var cache = CacheService.getScriptCache();
-  var raw = cache.get(AUTH_LOGIN_RATE_CACHE_KEY_);
+  var raw = cache.get(authLoginRateKey_(email));
   var count = raw ? Number(raw) || 0 : 0;
   return count >= AUTH_LOGIN_RATE_MAX_FAILURES_;
 }
@@ -357,7 +374,7 @@ function authIsLoginRateLimited_() {
  * agar counter tidak salah hitung akibat request paralel.
  * @private
  */
-function authRecordLoginFailure_() {
+function authRecordLoginFailure_(email) {
   var lock = LockService.getScriptLock();
   var lockAcquired = lock.tryLock(5000);
   if (!lockAcquired) {
@@ -365,9 +382,9 @@ function authRecordLoginFailure_() {
   }
   try {
     var cache = CacheService.getScriptCache();
-    var raw = cache.get(AUTH_LOGIN_RATE_CACHE_KEY_);
+    var raw = cache.get(authLoginRateKey_(email));
     var count = raw ? Number(raw) || 0 : 0;
-    cache.put(AUTH_LOGIN_RATE_CACHE_KEY_, String(count + 1), AUTH_LOGIN_RATE_WINDOW_SECONDS_);
+    cache.put(authLoginRateKey_(email), String(count + 1), AUTH_LOGIN_RATE_WINDOW_SECONDS_);
   } finally {
     lock.releaseLock();
   }

@@ -31,7 +31,7 @@ function apiListUsers(token) {
   return apiRun_(function () {
     var user = requireSession_(token);
     requireRole_(user, [CONFIG.ROLES.ADMIN]);
-    return listActiveUsers();
+    return listActiveUsers().map(authSanitizeUser_);
   });
 }
 
@@ -47,7 +47,7 @@ function apiCreateUser(token, payload) {
   return apiRun_(function () {
     var user = requireSession_(token);
     requireRole_(user, [CONFIG.ROLES.ADMIN]);
-    return createUser(payload || {});
+    return authSanitizeUser_(createUser(payload || {}));
   });
 }
 
@@ -62,7 +62,7 @@ function apiUpdateUser(token, userId, updates) {
   return apiRun_(function () {
     var user = requireSession_(token);
     requireRole_(user, [CONFIG.ROLES.ADMIN]);
-    return updateUser(userId, updates || {});
+    return authSanitizeUser_(updateUser(userId, updates || {}));
   });
 }
 
@@ -76,6 +76,6 @@ function apiDeactivateUser(token, userId) {
   return apiRun_(function () {
     var user = requireSession_(token);
     requireRole_(user, [CONFIG.ROLES.ADMIN]);
-    return deactivateUser(userId);
+    return authSanitizeUser_(deactivateUser(userId));
   });
 }

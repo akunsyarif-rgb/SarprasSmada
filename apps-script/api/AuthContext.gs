@@ -79,3 +79,32 @@ function requireRole_(userContext, allowedRoles) {
     );
   }
 }
+
+/**
+ * Apakah pengguna boleh melihat/mengubah laporan tertentu: peran workflow
+ * (VERIFIKATOR/OWNER/ADMIN) untuk semua laporan, selain itu hanya pelapor
+ * laporan itu sendiri.
+ * @param {Object} user Hasil requireSession_().
+ * @param {Object} report Baris laporan.
+ * @return {boolean}
+ */
+function canAccessReport_(user, report) {
+  return getWorkflowAllowedRoles_().indexOf(user.role) !== -1 ||
+    report.reporter_id === user.user_id;
+}
+
+/**
+ * Memastikan pengguna boleh mengakses laporan; melempar error generik bila
+ * laporan tidak ada atau bukan haknya (tidak membedakan, agar ID tidak
+ * bisa dienumerasi).
+ * @param {Object} user
+ * @param {string} reportId
+ * @return {Object} Laporan.
+ */
+function requireReportAccess_(user, reportId) {
+  var report = getReportById(reportId);
+  if (!report || !canAccessReport_(user, report)) {
+    throw new Error('Laporan tidak ditemukan: "' + reportId + '".');
+  }
+  return report;
+}

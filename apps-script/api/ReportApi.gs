@@ -61,11 +61,9 @@ function apiCreateReport(token, payload) {
  */
 function apiListReports(token, status) {
   return apiRun_(function () {
-    requireSession_(token);
-    if (!status) {
-      return listActiveReports();
-    }
-    return listReportsByStatus(status);
+    var user = requireSession_(token);
+    var reports = status ? listReportsByStatus(status) : listActiveReports();
+    return reports.filter(function (r) { return canAccessReport_(user, r); });
   });
 }
 
@@ -77,12 +75,8 @@ function apiListReports(token, status) {
  */
 function apiGetReport(token, reportId) {
   return apiRun_(function () {
-    requireSession_(token);
-    var report = getReportById(reportId);
-    if (!report) {
-      throw new Error('Laporan tidak ditemukan: "' + reportId + '".');
-    }
-    return report;
+    var user = requireSession_(token);
+    return requireReportAccess_(user, reportId);
   });
 }
 
@@ -94,7 +88,8 @@ function apiGetReport(token, reportId) {
  */
 function apiListReportHistory(token, reportId) {
   return apiRun_(function () {
-    requireSession_(token);
+    var user = requireSession_(token);
+    requireReportAccess_(user, reportId);
     return listReportHistory(reportId);
   });
 }
@@ -110,6 +105,7 @@ function apiListReportHistory(token, reportId) {
 function apiUpdateReport(token, reportId, updates) {
   return apiRun_(function () {
     var user = requireSession_(token);
+    requireReportAccess_(user, reportId);
     updates = updates || {};
     updates.performed_by = user.user_id;
     return updateReport(reportId, updates);
