@@ -1,19 +1,19 @@
 # Skema & Izin Appwrite — SIGAP SARPRAS SMADA
 
-Status: **USULAN (belum diterapkan)**. Dokumen ini dibuat untuk di-review sebelum ada resource yang dibuat di Appwrite. Menggantikan backend Google Apps Script/Sheets (`docs/DATABASE_SCHEMA.md`, `docs/WORKFLOW.md` tetap menjadi sumber aturan bisnis).
+Status: **TABEL SUDAH DIBUAT (2026-10-19)**; Function, frontend, dan migrasi data belum. Keputusan A–D disetujui sesuai usulan. Menggantikan backend Google Apps Script/Sheets (`docs/DATABASE_SCHEMA.md`, `docs/WORKFLOW.md` tetap menjadi sumber aturan bisnis).
 
 ## 1. Target
 
 | Item | Nilai |
 |---|---|
 | Project | `PRESENSI` (`6ace48710006ad3f6b31`, region Singapura) — dipakai bersama aplikasi presensi |
-| Isolasi | Database, bucket, function, dan label **terpisah** dari presensi. Tidak ada resource presensi yang disentuh. |
-| Database | `sarpras` (baru) |
+| Isolasi | Tabel, bucket, function, dan label **terpisah** dari presensi. Tidak ada resource presensi yang disentuh. |
+| Database | **`presensi` (yang sudah ada)** — paket gratis hanya mengizinkan 1 database per project. Tabel sarpras diberi prefiks `sarpras_` (mis. `sarpras_reports`); tabel presensi tidak disentuh. Bisa dipindah ke database sendiri bila paket di-upgrade. |
 | Bucket | `foto-sarpras` (fase 2) |
 | Prefiks function | `sarpras-` |
-| Prefiks label | `sarpras_` |
+| Prefiks label | `sarpras` (tanpa underscore — Appwrite hanya menerima label alfanumerik) |
 
-Aturan keras: jangan ubah/hapus `presensi` (database), `foto-presensi` (bucket), `submit-presensi` (function), `presensi-xi-f-teknik-2` (site), dan jangan ubah label `guru` yang sudah ada.
+Aturan keras: jangan ubah/hapus `foto-presensi` (bucket), `submit-presensi` (function), `presensi-xi-f-teknik-2` (site), dan jangan ubah label `guru` yang sudah ada.
 
 ## 2. Prinsip desain
 
@@ -28,20 +28,20 @@ Aturan keras: jangan ubah/hapus `presensi` (database), `foto-presensi` (bucket),
 
 | Role | Label Appwrite | Hak |
 |---|---|---|
-| Siswa | `sarpras_siswa` | Buat laporan; lihat/ubah laporan sendiri |
-| Guru | `sarpras_guru` | Sama seperti siswa |
-| Staf | `sarpras_staf` | Sama seperti siswa |
-| Verifikator | `sarpras_verifikator` | Lihat semua laporan; ubah status; nonaktifkan laporan |
-| Owner | `sarpras_owner` | Sama seperti verifikator (sesuai `getWorkflowAllowedRoles_()` lama) |
-| Admin | `sarpras_admin` | Semua hak verifikator + kelola data master + kelola pengguna |
+| Siswa | `sarprassiswa` | Buat laporan; lihat/ubah laporan sendiri |
+| Guru | `sarprasguru` | Sama seperti siswa |
+| Staf | `sarprasstaf` | Sama seperti siswa |
+| Verifikator | `sarprasverifikator` | Lihat semua laporan; ubah status; nonaktifkan laporan |
+| Owner | `sarprasowner` | Sama seperti verifikator (sesuai `getWorkflowAllowedRoles_()` lama) |
+| Admin | `sarprasadmin` | Semua hak verifikator + kelola data master + kelola pengguna |
 
-Satu pengguna = tepat satu label `sarpras_*` role. Akun pemilik (`akunsyarif@gmail.com`) mendapat `sarpras_admin` **ditambah** label `guru` yang sudah ada.
+Satu pengguna = tepat satu label `sarpras_*` role. Akun pemilik (`akunsyarif@gmail.com`) mendapat `sarprasadmin` **ditambah** label `guru` yang sudah ada.
 
-Catatan: label `guru` (presensi) dan `sarpras_guru` sengaja berbeda agar izin data presensi tidak bocor ke sarpras dan sebaliknya.
+Catatan: label `guru` (presensi) dan `sarprasguru` sengaja berbeda agar izin data presensi tidak bocor ke sarpras dan sebaliknya.
 
 ## 4. Tabel
 
-Semua tabel di database `sarpras`. Tipe: `str(n)` = string maksimal n, `enum` = enum, `bool`, `dt` = datetime, `int`.
+Semua tabel di database `presensi` dengan ID `sarpras_<nama>` (mis. `users_profile` → `sarpras_users_profile`). Tipe: `str(n)` = string maksimal n, `enum` = enum, `bool`, `dt` = datetime, `int`.
 `$id` baris memakai ID lama (mis. `RPT-000012`, `LOC-000003`) agar relasi hasil migrasi tetap valid; baris baru memakai `ID.unique()`.
 
 ### 4.1 `users_profile`
@@ -124,15 +124,15 @@ Notasi: `R` baca, `C` buat, `U` ubah, `D` hapus. "Row" = izin per baris (`rowSec
 
 | Tabel | rowSecurity | Izin tabel (client) | Izin baris |
 |---|---|---|---|
-| `users_profile` | ya | R: `label:sarpras_admin`, `label:sarpras_verifikator`, `label:sarpras_owner` | R: `user:<id sendiri>` |
-| `locations` | tidak | R: `users`; C/U/D: `label:sarpras_admin` | — |
-| `categories` | tidak | R: `users`; C/U/D: `label:sarpras_admin` | — |
-| `facilities` | tidak | R: `users`; C/U/D: `label:sarpras_admin` | — |
-| `owners` | tidak | R: `users`; C/U/D: `label:sarpras_admin` | — |
-| `reports` | ya | R: `label:sarpras_verifikator`, `label:sarpras_owner`, `label:sarpras_admin`; **tanpa C/U/D** | R: `user:<reporter_id>` |
-| `report_history` | ya | R: `label:sarpras_verifikator`, `label:sarpras_owner`, `label:sarpras_admin`; tanpa C/U/D | R: `user:<reporter_id laporan>` |
+| `users_profile` | ya | R: `label:sarprasadmin`, `label:sarprasverifikator`, `label:sarprasowner` | R: `user:<id sendiri>` |
+| `locations` | tidak | R: `users`; C/U/D: `label:sarprasadmin` | — |
+| `categories` | tidak | R: `users`; C/U/D: `label:sarprasadmin` | — |
+| `facilities` | tidak | R: `users`; C/U/D: `label:sarprasadmin` | — |
+| `owners` | tidak | R: `users`; C/U/D: `label:sarprasadmin` | — |
+| `reports` | ya | R: `label:sarprasverifikator`, `label:sarprasowner`, `label:sarprasadmin`; **tanpa C/U/D** | R: `user:<reporter_id>` |
+| `report_history` | ya | R: `label:sarprasverifikator`, `label:sarprasowner`, `label:sarprasadmin`; tanpa C/U/D | R: `user:<reporter_id laporan>` |
 | `sequences` | tidak | **tidak ada** (hanya Function dengan API key) | — |
-| `audit_logs` | tidak | R: `label:sarpras_admin`; tanpa C/U/D | — |
+| `audit_logs` | tidak | R: `label:sarprasadmin`; tanpa C/U/D | — |
 
 Pelapor melihat laporan dan riwayat miliknya lewat izin baris; staf lewat izin tabel. Tidak ada izin `any`/`guests` di tabel mana pun.
 
