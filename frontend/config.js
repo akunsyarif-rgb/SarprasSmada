@@ -1,26 +1,47 @@
 /**
  * config.js
  *
- * Titik konfigurasi tunggal untuk frontend SIGAP SARPRAS — meniru pola yang
- * sama persis dengan aplikasi SIGAP (`Sigap-app`, TIDAK diubah oleh
- * perubahan ini): `API_URL`/`API_TOKEN` dikirim dari SETIAP client, tidak
- * ada cara menyembunyikannya sungguh-sungguh pada aplikasi statis tanpa
- * bundler seperti ini — keamanan sesungguhnya ada di sisi server
- * (apps-script/api/AuthContext.gs + apps-script/auth/AuthService.gs), bukan
- * di token ini. Lihat catatan di apps-script/core/Config.gs getApiToken().
+ * Titik konfigurasi tunggal frontend SIGAP SARPRAS. Backend: Appwrite Cloud
+ * (project PRESENSI, region Singapura) — lihat docs/APPWRITE_SCHEMA.md.
  *
- * WAJIB diisi sebelum aplikasi bisa dipakai:
- * - API_URL: URL Web App hasil deploy (`clasp deploy` / Deploy > Manage
- *   deployments di editor Apps Script), lihat docs/GAS_CLASP_DEPLOY.md.
- * - API_TOKEN: SAMA PERSIS dengan Script Property `API_TOKEN` pada project
- *   Apps Script (lihat docs/DATABASE_SETUP.md bagian 10).
+ * Nilai di bawah BUKAN rahasia (endpoint & ID project memang publik di setiap
+ * aplikasi Appwrite). Keamanan ada di izin tabel/baris Appwrite dan di
+ * Function `sarpras-api`, bukan di sini. Domain tempat frontend ini di-hosting
+ * WAJIB didaftarkan sebagai platform Web di project Appwrite, kalau tidak
+ * browser akan memblokir request (CORS).
  */
 
 var CONFIG = {
-  API_URL: 'PASTE_WEB_APP_URL_DI_SINI',
-  API_TOKEN: 'PASTE_API_TOKEN_DI_SINI',
+  APPWRITE: {
+    ENDPOINT: 'https://sgp.cloud.appwrite.io/v1',
+    PROJECT_ID: '6ace48710006ad3f6b31',
+    DATABASE_ID: 'presensi',
+    FUNCTION_ID: 'sarpras-api',
+    TABLES: {
+      USERS: 'sarpras_users_profile',
+      LOCATIONS: 'sarpras_locations',
+      CATEGORIES: 'sarpras_categories',
+      FACILITIES: 'sarpras_facilities',
+      OWNERS: 'sarpras_owners',
+      REPORTS: 'sarpras_reports',
+      HISTORY: 'sarpras_report_history'
+    }
+  },
 
-  /** Nilai kanonik role — WAJIB sinkron dengan CONFIG.ROLES di apps-script/core/Config.gs. */
+  /** Label Appwrite -> role. WAJIB sinkron dengan ROLE_LABELS di functions/sarpras-api/src/lib/config.js. */
+  LABEL_TO_ROLE: {
+    sarprassiswa: 'SISWA',
+    sarprasguru: 'GURU',
+    sarprasstaf: 'STAF',
+    sarprasverifikator: 'VERIFIKATOR',
+    sarprasowner: 'OWNER',
+    sarprasadmin: 'ADMIN'
+  },
+
+  /** Batas baris per daftar (belum ada paginasi). */
+  LIST_LIMIT: 500,
+
+  /** Nilai kanonik role — WAJIB sinkron dengan CONFIG.ROLES di functions/sarpras-api/src/lib/config.js. */
   ROLES: {
     SISWA: 'SISWA',
     GURU: 'GURU',
@@ -40,7 +61,7 @@ var CONFIG = {
     ADMIN: 'Admin'
   },
 
-  /** Nilai kanonik status laporan — WAJIB sinkron dengan CONFIG.REPORT_STATUS di apps-script/core/Config.gs. */
+  /** Nilai kanonik status laporan — WAJIB sinkron dengan CONFIG.REPORT_STATUS di functions/sarpras-api/src/lib/config.js. */
   REPORT_STATUS: {
     SUBMITTED: 'SUBMITTED',
     VERIFIED: 'VERIFIED',
@@ -60,9 +81,6 @@ var CONFIG = {
     CLOSED: 'Ditutup'
   },
 
-  /** Peran yang boleh mengubah status/menonaktifkan laporan — WAJIB sinkron dengan getWorkflowAllowedRoles_() di apps-script/api/AuthContext.gs. */
-  WORKFLOW_ROLES: ['VERIFIKATOR', 'OWNER', 'ADMIN'],
-
-  /** Key localStorage penyimpan sesi. */
-  SESSION_STORAGE_KEY: 'sarpras_session'
+  /** Peran yang boleh mengubah status/menonaktifkan laporan — WAJIB sinkron dengan STAFF_ROLES di functions/sarpras-api/src/lib/config.js. */
+  WORKFLOW_ROLES: ['VERIFIKATOR', 'OWNER', 'ADMIN']
 };

@@ -21,7 +21,7 @@ function NamedEntityManager(props) {
 
   function reload() {
     setLoading(true);
-    props.api.list(props.sessionToken)
+    props.api.list()
       .then(function (data) { setItems(data); setLoading(false); })
       .catch(function (err) { setError(err.message); setLoading(false); });
   }
@@ -33,14 +33,14 @@ function NamedEntityManager(props) {
     var payload = {};
     payload[props.nameField] = name;
     payload.description = desc;
-    props.api.create(props.sessionToken, payload)
+    props.api.create(payload)
       .then(function () { setName(''); setDesc(''); reload(); })
       .catch(function (err) { setError(err.message); });
   }
 
   function handleDeactivate(id) {
     if (!confirm('Nonaktifkan data ini?')) { return; }
-    props.api.deactivate(props.sessionToken, id)
+    props.api.deactivate(id)
       .then(reload)
       .catch(function (err) { setError(err.message); });
   }
@@ -84,7 +84,7 @@ function LocationManager(props) {
 
   function reload() {
     setLoading(true);
-    Api.listLocations(props.sessionToken)
+    Api.listLocations()
       .then(function (data) { setItems(data); setLoading(false); })
       .catch(function (err) { setError(err.message); setLoading(false); });
   }
@@ -93,14 +93,14 @@ function LocationManager(props) {
   function handleCreate(e) {
     e.preventDefault();
     setError('');
-    Api.createLocation(props.sessionToken, { location_name: name, location_type: type, parent_id: parentId || undefined })
+    Api.createLocation({ location_name: name, location_type: type, parent_id: parentId || undefined })
       .then(function () { setName(''); setType(''); setParentId(''); reload(); })
       .catch(function (err) { setError(err.message); });
   }
 
   function handleDeactivate(id) {
     if (!confirm('Nonaktifkan lokasi ini?')) { return; }
-    Api.deactivateLocation(props.sessionToken, id).then(reload).catch(function (err) { setError(err.message); });
+    Api.deactivateLocation(id).then(reload).catch(function (err) { setError(err.message); });
   }
 
   return React.createElement(
@@ -147,7 +147,7 @@ function FacilityManager(props) {
 
   function reload() {
     setLoading(true);
-    Api.listFacilities(props.sessionToken)
+    Api.listFacilities()
       .then(function (data) { setItems(data); setLoading(false); })
       .catch(function (err) { setError(err.message); setLoading(false); });
   }
@@ -156,14 +156,14 @@ function FacilityManager(props) {
   function handleCreate(e) {
     e.preventDefault();
     setError('');
-    Api.createFacility(props.sessionToken, { facility_name: name, category_id: categoryId })
+    Api.createFacility({ facility_name: name, category_id: categoryId })
       .then(function () { setName(''); setCategoryId(''); reload(); })
       .catch(function (err) { setError(err.message); });
   }
 
   function handleDeactivate(id) {
     if (!confirm('Nonaktifkan fasilitas ini?')) { return; }
-    Api.deactivateFacility(props.sessionToken, id).then(reload).catch(function (err) { setError(err.message); });
+    Api.deactivateFacility(id).then(reload).catch(function (err) { setError(err.message); });
   }
 
   var categoriesById = indexById(props.categories, 'category_id');
@@ -209,12 +209,13 @@ function UsersManager(props) {
   var _email = React.useState(''), email = _email[0], setEmail = _email[1];
   var _fullName = React.useState(''), fullName = _fullName[0], setFullName = _fullName[1];
   var _role = React.useState('SISWA'), role = _role[0], setRole = _role[1];
+  var _initPassword = React.useState(''), initPassword = _initPassword[0], setInitPassword = _initPassword[1];
   var _passwordFor = React.useState(null), passwordFor = _passwordFor[0], setPasswordFor = _passwordFor[1];
   var _newPassword = React.useState(''), newPassword = _newPassword[0], setNewPassword = _newPassword[1];
 
   function reload() {
     setLoading(true);
-    Api.listUsers(props.sessionToken)
+    Api.listUsers()
       .then(function (data) { setItems(data); setLoading(false); })
       .catch(function (err) { setError(err.message); setLoading(false); });
   }
@@ -223,20 +224,20 @@ function UsersManager(props) {
   function handleCreate(e) {
     e.preventDefault();
     setError('');
-    Api.createUser(props.sessionToken, { email: email, full_name: fullName, role: role })
-      .then(function () { setEmail(''); setFullName(''); setRole('SISWA'); reload(); })
+    Api.createUser({ email: email, full_name: fullName, role: role, password: initPassword })
+      .then(function () { setEmail(''); setFullName(''); setRole('SISWA'); setInitPassword(''); reload(); })
       .catch(function (err) { setError(err.message); });
   }
 
   function handleDeactivate(id) {
     if (!confirm('Nonaktifkan pengguna ini?')) { return; }
-    Api.deactivateUser(props.sessionToken, id).then(reload).catch(function (err) { setError(err.message); });
+    Api.deactivateUser(id).then(reload).catch(function (err) { setError(err.message); });
   }
 
   function handleSetPassword(e) {
     e.preventDefault();
     setError('');
-    Api.setPassword(props.sessionToken, passwordFor.user_id, newPassword)
+    Api.setPassword(passwordFor.user_id, newPassword)
       .then(function () { setPasswordFor(null); setNewPassword(''); reload(); })
       .catch(function (err) { setError(err.message); });
   }
@@ -256,9 +257,9 @@ function UsersManager(props) {
         { value: role, onChange: function (e) { setRole(e.target.value); } },
         Object.keys(CONFIG.ROLES).map(function (r) { return React.createElement('option', { key: r, value: r }, CONFIG.ROLE_LABELS[r]); })
       ),
+      React.createElement('input', { type: 'password', placeholder: 'Password awal (min. 8 karakter)', required: true, minLength: 8, autoComplete: 'new-password', value: initPassword, onChange: function (e) { setInitPassword(e.target.value); } }),
       React.createElement('button', { type: 'submit', className: 'btn-primary' }, 'Tambah')
     ),
-    React.createElement('p', { className: 'muted-note' }, 'Pengguna baru belum punya password — klik "Set Password" untuk menetapkan password awal.'),
     loading ? React.createElement(Spinner) : React.createElement(
       'table',
       { className: 'data-table' },
@@ -311,16 +312,16 @@ function AdminTab(props) {
     'div',
     { className: 'tab-content' },
     React.createElement(NavTabs, { tabs: sections, active: section, onChange: setSection }),
-    section === 'locations' && React.createElement(LocationManager, { sessionToken: props.sessionToken }),
+    section === 'locations' && React.createElement(LocationManager, {}),
     section === 'categories' && React.createElement(NamedEntityManager, {
-      title: 'Kategori', sessionToken: props.sessionToken, nameField: 'category_name', idField: 'category_id',
+      title: 'Kategori', nameField: 'category_name', idField: 'category_id',
       api: { list: Api.listCategories, create: Api.createCategory, deactivate: Api.deactivateCategory }
     }),
-    section === 'facilities' && React.createElement(FacilityManager, { sessionToken: props.sessionToken, categories: props.categories }),
+    section === 'facilities' && React.createElement(FacilityManager, { categories: props.categories }),
     section === 'owners' && React.createElement(NamedEntityManager, {
-      title: 'Owner / Penanggung Jawab', sessionToken: props.sessionToken, nameField: 'owner_name', idField: 'owner_id',
+      title: 'Owner / Penanggung Jawab', nameField: 'owner_name', idField: 'owner_id',
       api: { list: Api.listOwners, create: Api.createOwner, deactivate: Api.deactivateOwner }
     }),
-    section === 'users' && React.createElement(UsersManager, { sessionToken: props.sessionToken })
+    section === 'users' && React.createElement(UsersManager, {})
   );
 }

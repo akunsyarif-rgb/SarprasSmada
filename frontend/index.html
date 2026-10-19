@@ -147,6 +147,10 @@
         integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1"
         crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
+<script src="https://cdn.jsdelivr.net/npm/appwrite@28.1.0/dist/iife/sdk.js"
+        integrity="sha384-Jnasj+FP3spQGUKYstxIOwLiFmN6JBXe7OSeErEpv6gq0Cfaa347wsJzGAzj/w++"
+        crossorigin="anonymous"></script>
+
 <script>
   // Cache-busting: naikkan BUILD_VERSION setiap deploy yang menyentuh
   // berkas .js apa pun di folder ini, sama seperti alasan yang sama di
@@ -154,7 +158,7 @@
   // lama tidak terus memakai berkas .js versi lama dari cache browser.
   // Ditulis lewat document.write agar tetap <script src> biasa berurutan
   // (bukan fetch+join seperti SIGAP, lihat catatan di atas <style>).
-  var BUILD_VERSION = 1;
+  var BUILD_VERSION = 2;
   ['config.js', 'helpers.js', 'api.js', 'ui-common.js', 'reports.js', 'admin.js', 'app.js'].forEach(function (file) {
     document.write('<script src="' + file + '?v=' + BUILD_VERSION + '"><' + '/script>');
   });

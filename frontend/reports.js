@@ -25,7 +25,7 @@ function ReportForm(props) {
     e.preventDefault();
     setError('');
     setLoading(true);
-    Api.createReport(props.sessionToken, {
+    Api.createReport({
       location_id: locationId,
       category_id: categoryId,
       facility_id: facilityId || undefined,
@@ -119,7 +119,7 @@ function ReportDetail(props) {
   var _loading = React.useState(false), loading = _loading[0], setLoading = _loading[1];
 
   React.useEffect(function () {
-    Api.listReportHistory(props.sessionToken, report.report_id).then(setHistory).catch(function (err) { setError(err.message); });
+    Api.listReportHistory(report.report_id).then(setHistory).catch(function (err) { setError(err.message); });
   }, [report.report_id]);
 
   var canManage = CONFIG.WORKFLOW_ROLES.indexOf(props.currentUser.role) !== -1;
@@ -129,7 +129,7 @@ function ReportDetail(props) {
     if (!next) { return; }
     setError('');
     setLoading(true);
-    Api.changeReportStatus(props.sessionToken, report.report_id, next, notes)
+    Api.changeReportStatus(report.report_id, next, notes)
       .then(function (updated) {
         setLoading(false);
         props.onUpdated(updated);
@@ -191,7 +191,7 @@ function ReportsTab(props) {
 
   function reload() {
     setLoading(true);
-    Api.listReports(props.sessionToken, statusFilter || undefined)
+    Api.listReports(statusFilter || undefined)
       .then(function (data) { setReports(data); setLoading(false); })
       .catch(function (err) { setError(err.message); setLoading(false); });
   }
@@ -221,7 +221,7 @@ function ReportsTab(props) {
     React.createElement(
       'p',
       { className: 'muted-note' },
-      'Catatan: daftar ini menampilkan seluruh laporan aktif ke semua peran yang login — pembatasan tampilan per pelapor/owner belum diimplementasikan di backend (PHASE 5, lihat docs/DEVELOPMENT_ROADMAP.md).'
+      'Verifikator, Owner, dan Admin melihat semua laporan; peran lain hanya melihat laporan yang mereka buat sendiri.'
     ),
     loading ? React.createElement(Spinner) : React.createElement(
       'div',
@@ -245,7 +245,6 @@ function ReportsTab(props) {
       Modal,
       { title: 'Buat Laporan Baru', onClose: function () { setShowForm(false); } },
       React.createElement(ReportForm, {
-        sessionToken: props.sessionToken,
         locations: props.locations,
         categories: props.categories,
         facilities: props.facilities,
@@ -255,7 +254,6 @@ function ReportsTab(props) {
     ),
     selected && React.createElement(ReportDetail, {
       report: selected,
-      sessionToken: props.sessionToken,
       currentUser: props.currentUser,
       locationsById: locationsById,
       categoriesById: categoriesById,

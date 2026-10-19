@@ -165,7 +165,7 @@ function ChangePasswordModal(props) {
       return;
     }
     setLoading(true);
-    Api.changePassword(props.sessionToken, oldPassword, newPassword)
+    Api.changePassword(oldPassword, newPassword)
       .then(function () {
         setLoading(false);
         props.onDone();
