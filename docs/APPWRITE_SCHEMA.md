@@ -136,7 +136,9 @@ Notasi: `R` baca, `C` buat, `U` ubah, `D` hapus. "Row" = izin per baris (`rowSec
 
 Pelapor melihat laporan dan riwayat miliknya lewat izin baris; staf lewat izin tabel. Tidak ada izin `any`/`guests` di tabel mana pun.
 
-## 6. Function (semua `execute: users`, bukan `any`)
+## 6. Function — satu function `sarpras-api` (router action), `execute: users` (bukan `any`)
+
+Kode: `functions/sarpras-api/` (Node 22, `node-appwrite`). Satu function dipilih karena paket gratis membatasi jumlah function dan agar kode bersama tidak perlu disalin. Request `POST {action, ...}`; respons `{success, data, error:{message}}` (sama dengan API lama). Tabel di bawah menunjukkan *action*, bukan function terpisah; `sarpras-master` tidak dibuat (keputusan B: admin menulis master langsung). Tambahan: action `syncMyProfile` membuat baris profil untuk akun berlabel yang belum punya profil.
 
 Setiap function: ambil `x-appwrite-user-id` → `Users.get` → baca label & `is_active` → tolak jika bukan haknya. Kunci API function memakai scope minimal.
 

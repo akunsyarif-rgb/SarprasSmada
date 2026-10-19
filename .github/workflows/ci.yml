@@ -18,3 +18,8 @@ jobs:
           done
       - name: Tes logika backend
         run: node tests/auth.test.js
+      - name: Tes Appwrite Function
+        working-directory: functions/sarpras-api
+        run: |
+          npm ci
+          npm test
