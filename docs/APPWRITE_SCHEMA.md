@@ -206,3 +206,12 @@ Dengan akun uji tiap role, dari SDK client:
 - `frontend/app.js`: sesi dari SDK, bukan `localStorage` buatan sendiri.
 - Folder `functions/sarpras-*` baru; `apps-script/` dipertahankan sampai migrasi selesai, lalu diarsipkan.
 - Tes: tambahkan tes logika murni (transisi workflow, whitelist kolom update) yang dipakai bersama.
+
+## 12. Status deploy (2026-10-19)
+
+- Function `sarpras-api` dibuat di project PRESENSI (node-22, entrypoint `src/main.js`, `execute: users`, timeout 15 dtk).
+- Scope: `databases.read`, `tables.read`, `rows.read`, `rows.write`, `users.read`, `users.write` (tidak ada akses bucket/function lain).
+- Deployment manual `6ad630ebc01bc19b23e1` berstatus `ready` dan aktif; kode di-upload dari `functions/sarpras-api` (tanpa `node_modules` dan `test`, build menjalankan `npm install`).
+- Terverifikasi: build berhasil; eksekusi tanpa user sarpras ditolak (403, "Sesi tidak valid"); header `x-appwrite-*` dari klien ditolak Appwrite (tidak bisa menyamar sebagai user lain).
+- Belum diuji end-to-end dengan sesi pengguna nyata — dilakukan lewat uji penerimaan §10 setelah frontend terhubung.
+- Deploy ulang: paketkan `package.json`, `package-lock.json`, `src/` menjadi `.tar.gz`, lalu buat deployment baru dengan `activate: true`.
